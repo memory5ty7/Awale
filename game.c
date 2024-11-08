@@ -2,40 +2,34 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include "game.h"
 
-void displayBoard(int*, int*, bool);
+gameState initGame(int rotation){
 
-bool player1;
-bool doMove(int*, int*, int);
-bool movesAllowed[6];
-
-int main(int argc, char const* argv[]){
-    int board[12];
-    int stash[2];
-    int choice, rotation, winner;
-    bool finished;
-
+    gameState state;
+    
     for(int i=0;i<sizeof(board)/sizeof(int);i++){
-        board[i]=4;
+        state.board[i]=4;
     }
-    for(int i=0;i<sizeof(stash)/sizeof(int);i++){
-        stash[i]=0;
+    for(int i=0;i<sizeof(state.stash)/sizeof(int);i++){
+        state.stash[i]=0;
     }
-    player1 = true;
-    rotation = 1;
+    state.player1 = true;
 
-    rotation = atoi(argv[1]);
+    state.rotation = rotation;
 
-    finished=false;
+    return state;
+}
 
-    while(!finished){
+bool checkMove(gameState state){
+
         int nbAllowed=0;
         int testBoard[12];
         int testStash[2];
 
         for(int i=0;i<6;i++){
             for(int i=0;i<sizeof(testBoard)/sizeof(int);i++){
-                testBoard[i]=board[i];
+                testBoard[i]=state.board[i];
             }
             testStash[0]=0;
             testStash[1]=0;
@@ -47,40 +41,45 @@ int main(int argc, char const* argv[]){
             }
         }
         if(nbAllowed==0){
-            stash[!player1]+=48-stash[0]-stash[1];
+            state.stash[!player1]+=48-state.stash[0]-state.stash[1];
             finished=true;
             break;
         }
 
-        choice=-1;
-        while(choice<1||choice>6){
-            displayBoard(board, stash, player1);
-            printf("Choisissez une case.\n");
-            scanf("%d",&choice);
-            if(movesAllowed[choice-1]){
-                break;
-            } else {
-                choice=-1;
-                printf("Cette action n'est pas possible.\n");
-            }
-        }
-        doMove(board,stash,choice);
+}
 
-        if(stash[0]>24||stash[1]>24){
-            finished=true;
+void playerAction(gameState state){
+    choice=-1;
+    while(choice<1||choice>6){
+        displayBoard(state.board, state.stash, player1);
+        printf("Choisissez une case.\n");
+        scanf("%d",&choice);
+        if(movesAllowed[choice-1]){
+            break;
+        } else {
+            choice=-1;
+            printf("Cette action n'est pas possible.\n");
         }
-        player1=!player1;
-
     }
-    if(stash[0]>stash[1]){
+    doMove(state.board,state.stash,choice);
+    state.player1=!state.player1;
+}
+
+bool checkWin(gameState state){
+    if(state.stash[0]>24||state.stash[1]>24){
+        return true;
+    }
+    return false;
+}
+
+void announceWinners(gameState state){
+    if(state.stash[0]>state.stash[1]){
         winner=0;
     } else {
         winner=1;
     }
     printf("La partie est terminée!\nLe joueur %d a gagné!",winner+1);
 }
-
-
 
 void displayBoard(int* board, int* stash, bool player1){
     //printf("|");
@@ -136,7 +135,7 @@ bool doMove(int* board, int* stash, int choice){
                 board[j%12]+=1;
                 nbSeeds--;
             }
-            j++;
+            j+=state.rotation;
         }
         //printf("j = %d\n",j);
         totalstash=0;
@@ -144,7 +143,7 @@ bool doMove(int* board, int* stash, int choice){
             stash[!player1]+=board[(j-1)%12];
             totalstash+=board[(j-1)%12];
             board[(j-1)%12]=0;
-            j--;
+            j-=state.rotation;
         }
 
         for(int i=0;i<6;i++){
