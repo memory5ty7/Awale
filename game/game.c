@@ -2,13 +2,15 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include "game.h"
+#include "../include/game.h"
+
+
 
 gameState initGame(int rotation){
 
     gameState state;
     
-    for(int i=0;i<sizeof(board)/sizeof(int);i++){
+    for(int i=0;i<sizeof(state.board)/sizeof(int);i++){
         state.board[i]=4;
     }
     for(int i=0;i<sizeof(state.stash)/sizeof(int);i++){
@@ -24,44 +26,54 @@ gameState initGame(int rotation){
 bool checkMove(gameState state){
 
         int nbAllowed=0;
-        int testBoard[12];
-        int testStash[2];
+
+        gameState testState;
+        for(int i=0;i<sizeof(testState.board)/sizeof(int);i++){
+            testState.board[i]=state.board[i];
+        }
+        for(int i=0;i<sizeof(testState.stash)/sizeof(int);i++){
+            testState.stash[i]=state.stash[i];
+        }
+        testState.player1=state.player1;
+        testState.rotation=state.rotation;
+
+        bool finished=false;
 
         for(int i=0;i<6;i++){
-            for(int i=0;i<sizeof(testBoard)/sizeof(int);i++){
-                testBoard[i]=state.board[i];
+            for(int i=0;i<sizeof(testState.board)/sizeof(int);i++){
+                testState.board[i]=state.board[i];
             }
-            testStash[0]=0;
-            testStash[1]=0;
-            if(doMove(testBoard,testStash,i+1)){
-                movesAllowed[i]=true;
+            testState.stash[0]=0;
+            testState.stash[1]=0;
+            
+            if(doMove(state,i+1)){
+                state.movesAllowed[i]=true;
                 nbAllowed++;
             } else {
-                movesAllowed[i]=false;
+                state.movesAllowed[i]=false;
             }
         }
         if(nbAllowed==0){
-            state.stash[!player1]+=48-state.stash[0]-state.stash[1];
+            state.stash[!state.player1]+=48-state.stash[0]-state.stash[1];
             finished=true;
-            break;
         }
-
+        return finished;
 }
 
 void playerAction(gameState state){
-    choice=-1;
+    int choice=-1;
     while(choice<1||choice>6){
-        displayBoard(state.board, state.stash, player1);
+        displayBoard(state);
         printf("Choisissez une case.\n");
         scanf("%d",&choice);
-        if(movesAllowed[choice-1]){
+        if(state.movesAllowed[choice-1]){
             break;
         } else {
             choice=-1;
             printf("Cette action n'est pas possible.\n");
         }
     }
-    doMove(state.board,state.stash,choice);
+    doMove(state,choice);
     state.player1=!state.player1;
 }
 
@@ -73,6 +85,7 @@ bool checkWin(gameState state){
 }
 
 void announceWinners(gameState state){
+    int winner;
     if(state.stash[0]>state.stash[1]){
         winner=0;
     } else {
@@ -81,32 +94,32 @@ void announceWinners(gameState state){
     printf("La partie est terminée!\nLe joueur %d a gagné!",winner+1);
 }
 
-void displayBoard(int* board, int* stash, bool player1){
+void displayBoard(gameState state){
     //printf("|");
-    if(player1){
-        printf("Joueur 1 | Stash: %d\n|",stash[!player1]);
+    if(state.player1){
+        printf("Joueur 1 | Stash: %d\n|",state.stash[!state.player1]);
         for(int i=11;i>5;i--){
-            printf("%02d|",board[i]);
+            printf("%02d|",state.board[i]);
         }
         printf("\n|");
         for(int i=0;i<6;i++){
-            printf("%02d|",board[i]);
+            printf("%02d|",state.board[i]);
         }
         printf("\n");
     } else {
-        printf("Joueur 2 | Stash: %d\n|",stash[!player1]);
+        printf("Joueur 2 | Stash: %d\n|",state.stash[!state.player1]);
         for(int i=5;i>=0;i--){
-            printf("%02d|",board[i]);
+            printf("%02d|",state.board[i]);
         }
         printf("\n|");
         for(int i=6;i<12;i++){
-            printf("%02d|",board[i]);
+            printf("%02d|",state.board[i]);
         } 
         printf("\n");
     }
     printf("  ");
     for(int i=0;i<6;i++){
-        if(movesAllowed[i]){
+        if(state.movesAllowed[i]){
             printf("%d  ",i+1);
         } else {
             printf("   ");
@@ -115,39 +128,39 @@ void displayBoard(int* board, int* stash, bool player1){
     printf("\n");
 }
 
-bool doMove(int* board, int* stash, int choice){
+bool doMove(gameState state,int choice){
         int j,nbSeeds, shift, chosen, totalstash;
-        if(player1){
+        if(state.player1){
             shift=0;
         } else {
             shift=6;          
         }
         chosen=choice+shift-1;
-        nbSeeds=board[chosen];
+        nbSeeds=state.board[chosen];
         if(nbSeeds==0){
             return false;
         }
         //printf("Vous avez choisi la case %d qui contient %d graines\n", choice, nbSeeds);
-        board[chosen]=0;
+        state.board[chosen]=0;
         j=chosen+1;
         while(nbSeeds>0){
             if(j%12!=chosen){
-                board[j%12]+=1;
+                state.board[j%12]+=1;
                 nbSeeds--;
             }
             j+=state.rotation;
         }
         //printf("j = %d\n",j);
         totalstash=0;
-        while((board[(j-1)%12]==2||board[(j-1)%12]==3)&&j%12<12-shift&&j%12>=6-shift){
-            stash[!player1]+=board[(j-1)%12];
-            totalstash+=board[(j-1)%12];
-            board[(j-1)%12]=0;
+        while((state.board[(j-1)%12]==2||state.board[(j-1)%12]==3)&&j%12<12-shift&&j%12>=6-shift){
+            state.stash[!state.player1]+=state.board[(j-1)%12];
+            totalstash+=state.board[(j-1)%12];
+            state.board[(j-1)%12]=0;
             j-=state.rotation;
         }
 
         for(int i=0;i<6;i++){
-            if(board[i+shift]!=0) return true;
+            if(state.board[i+shift]!=0) return true;
         }
         return false;
         //if (totalstash)
