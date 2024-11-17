@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "lobby.h": "c",
+        "client_serv.h": "c"
     }
 }

@@ -3,7 +3,7 @@
 #include <errno.h>
 #include <string.h>
 
-#include "../include/client.h"
+#include "client.h"
 
 static void init(void)
 {
@@ -79,6 +79,10 @@ static void app(const char *address, const char *name, const char *pwd)
          if(n == 0)
          {
             printf("Server disconnected !\n");
+            break;
+         }
+         if (strcmp(buffer,"Wrong user or password")==0){
+            printf("Wrong user or password\n");
             break;
          }
          puts(buffer);
