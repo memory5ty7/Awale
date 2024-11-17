@@ -35,14 +35,7 @@ int loadUsers(char* filename, int nbUsers, char** userPwd){
 
 
 bool authentification(char* userpassword, int nbUsers, char** userPwd){
-   puts(userPwd[0]);
-   puts(userPwd[1]);
-   puts("authentification en cours");
-   
    for (int i=0; i<nbUsers;i++){
-      puts(userPwd[i]);
-      puts("buffer :");
-      puts(userpassword);
       if (strcmp(userPwd[i],userpassword)==0){
          puts(userPwd[i]);
          return true;
@@ -144,8 +137,7 @@ static void app(void)
             continue;
          }
 
-         puts("check authentification");
-         puts(buffer);
+         puts("Authentification en cours...");
          if (!authentification(buffer, nbUsers, userPwd)){
             puts("Wrong user or password");
             write_client(csock, "Wrong user or password");
