@@ -3,7 +3,11 @@
 #include <errno.h>
 #include <string.h>
 
+<<<<<<< HEAD:client/client.c
 #include "client.h"
+=======
+#include "../include/player.h"
+>>>>>>> 49e30f6 (login working):client/player.c
 
 static void init(void)
 {

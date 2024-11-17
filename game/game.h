@@ -12,11 +12,11 @@ typedef struct gameState{
 } gameState;
 
 gameState initGame(int);
-bool checkMove(gameState);
+bool checkMove(gameState*);
 void playerAction(gameState);
 bool checkWin(gameState);
 void announceWinners(gameState);
-void displayBoard(gameState);
-bool doMove(gameState, int);
+void displayBoard(char*, size_t, gameState, int);
+bool doMove(gameState*, int);
 
 #endif // GAME_H

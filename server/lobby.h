@@ -1,6 +1,7 @@
-#ifndef SERVER_H
-#define SERVER_H
+#ifndef LOBBY_H
+#define LOBBY_H
 
+<<<<<<< HEAD:server/lobby.h
 #ifdef WIN32
 
 #include <winsock2.h>
@@ -46,5 +47,8 @@ static void write_client(SOCKET sock, const char *buffer);
 static void send_message_to_all_clients(Client *clients, Client client, int actual, const char *buffer, char from_server);
 static void remove_client(Client *clients, int to_remove, int *actual);
 static void clear_clients(Client *clients, int actual);
+=======
+#include "server.h"
+>>>>>>> 49e30f6 (login working):include/lobby.h
 
 #endif /* guard */
