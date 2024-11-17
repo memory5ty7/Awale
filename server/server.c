@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <string.h>
 #include <stdbool.h>
+#include <signal.h>
 
 #include "../include/lobby.h"
 #include "../include/game_session.h"
@@ -13,10 +14,17 @@
 
 char *userPwd[NB_USERS];
 int nbUsers; // nb de user dans la BD
+int server_socket;
 
 char buffer[BUF_SIZE];
 
 Client clients[MAX_CLIENTS];
+
+void cleanup(int signum)
+{
+   end_connection(server_socket);
+   exit(0);
+}
 
 bool add_client(Client client)
 {
@@ -205,7 +213,7 @@ static void app(void)
             continue;
 
          GameSession *session = &sessions[i];
-         Client *current = &session->players[session->currentPlayer];
+         Client *current = &session->players[session->game.current];
 
          if (FD_ISSET(current->sock, &rdfs))
          {
@@ -338,7 +346,6 @@ void start_game_session(Client player1, Client player2)
    session->players[0] = player1;
    session->players[1] = player2;
    session->game = initGame(1);
-   session->currentPlayer = 0;
    session->active = true;
 
    char msg[1024];
@@ -349,39 +356,27 @@ void start_game_session(Client player1, Client player2)
    snprintf(msg, sizeof(msg), "La partie contre %s commence !\n", player1.name);
    write_client(player2.sock, msg);
 
+   checkMove(&(session->game), session->game.current);
+
    displayBoard(buffer, BUF_SIZE, session->game, 0);
    write_client(session->players[0].sock, buffer);
 
    displayBoard(buffer, BUF_SIZE, session->game, 1);
    write_client(session->players[1].sock, buffer);
-
-   snprintf(buffer, BUF_SIZE, "C'est à vous de jouer, %s. Choisissez une case.\n", session->players[session->currentPlayer].name);
-   write_client(session->players[session->currentPlayer].sock, buffer);
-}
-
-void addChatMessage(ChatBuffer *chatBuffer, const char *message) {
-    if (chatBuffer->messageCount < CHAT_BUFFER_SIZE) {
-        strncpy(chatBuffer->messages[chatBuffer->messageCount], message, MAX_MESSAGE_LENGTH - 1);
-        chatBuffer->messages[chatBuffer->messageCount][MAX_MESSAGE_LENGTH - 1] = '\0'; // Ensure null-termination
-        chatBuffer->messageCount++;
-    } else {
-        // Overwrite the oldest message in a circular manner
-        for (int i = 1; i < CHAT_BUFFER_SIZE; i++) {
-            strncpy(chatBuffer->messages[i - 1], chatBuffer->messages[i], MAX_MESSAGE_LENGTH);
-        }
-        strncpy(chatBuffer->messages[CHAT_BUFFER_SIZE - 1], message, MAX_MESSAGE_LENGTH - 1);
-        chatBuffer->messages[CHAT_BUFFER_SIZE - 1][MAX_MESSAGE_LENGTH - 1] = '\0';
-    }
 }
 
 void handle_game_session(GameSession *session)
 {
-   Client *players = session->players;
-   int currentPlayer = session->currentPlayer;
-   Client *current = &players[currentPlayer];
-   Client *opponent = &players[1 - currentPlayer];
+   Client *players;
+   Client *current;
+   Client *opponent;
+
+   players = session->players;
+   current = &players[session->game.current];
+   opponent = &players[1 - session->game.current];
 
    char buffer[BUF_SIZE];
+
    int result = read_client(current->sock, buffer);
    if (result <= 0)
    {
@@ -394,59 +389,41 @@ void handle_game_session(GameSession *session)
       session->active = false;
       return;
    }
-   //buffer[result] = '\0';
+   buffer[result] = '\0';
 
-   if (strncmp(buffer, "/chat ", 6) == 0)
+   int choice = atoi(buffer);
+
+   if (choice < 1 || choice > 6 || !session->game.movesAllowed[choice - 1])
    {
-      const char *chatMessage = buffer + 6;
-      addChatMessage(&session->chatBuffer, chatMessage);
-
-      snprintf(buffer, sizeof(buffer), "Chat: %s\n", chatMessage);
-      for(int i=0;i<sizeof(players)/sizeof(Client);i++){
-         if(i!=currentPlayer&&i!=0){
-            write_client(players[i].sock, buffer);
-         }
-      }
-      for(int i=0;i<sizeof(session->spectators)/sizeof(Client);i++){
-         write_client(session->spectators[i].sock, buffer);
-      }     
-   } else {
-      int choice = atoi(buffer);
-
-      if (checkMove(&(session->game)))
-      {
-         end_game(session);
-         return;
-      }
-
-      if (choice < 1 || choice > 6 || !session->game.movesAllowed[choice - 1])
-      {
-         write_client(current->sock, "Invalid move. Try again.\n");
-         return;
-      }
-
-      if (!doMove(&(session->game), choice))
-      {
-         write_client(current->sock, "Invalid move 2. Try again.\n");
-         return;
-      }
-
-      if (checkWin(session->game))
-      {
-         end_game(session);
-         return;
-      }
-
-      displayBoard(buffer, BUF_SIZE, session->game, currentPlayer);
-      write_client(session->players[session->currentPlayer].sock, buffer);
-
-      session->currentPlayer = 1 - currentPlayer; // Changer de joueur
-      snprintf(buffer, BUF_SIZE, "C'est à vous de jouer, %s. Choisissez une case.\n", players[session->currentPlayer].name);
-      write_client(players[session->currentPlayer].sock, buffer);
-
-      displayBoard(buffer, BUF_SIZE, session->game, opponent);
-      write_client((*opponent).sock, buffer);
+      write_client(current->sock, "Invalid move 1. Try again.\n");
+      return;
    }
+
+   if (!doMove(&(session->game), choice, session->game.current))
+   {
+      write_client(current->sock, "Invalid move 2. Try again.\n");
+      return;
+   }
+
+   if (checkWin(session->game))
+   {
+      end_game(session);
+      return;
+   }
+
+   session->game.current = 1 - session->game.current;
+
+   if (checkMove(&(session->game), session->game.current))
+   {
+      end_game(session);
+      return;
+   }
+
+   displayBoard(buffer, BUF_SIZE, session->game, 0);
+   write_client(session->players[0].sock, buffer);
+
+   displayBoard(buffer, BUF_SIZE, session->game, 1);
+   write_client(session->players[1].sock, buffer);
 }
 
 void end_game(GameSession *session)
@@ -479,6 +456,8 @@ int check_if_player_is_connected(SOCKET sock)
 
 int main(int argc, char **argv)
 {
+   signal(SIGINT, cleanup);
+
    init();
 
    app();

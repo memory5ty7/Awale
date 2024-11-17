@@ -12,7 +12,6 @@ typedef struct {
 typedef struct {
     Client players[2];
     gameState game;
-    int currentPlayer;
     bool active;
     Client spectators[6];
     ChatBuffer chatBuffer;
