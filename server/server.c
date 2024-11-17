@@ -5,44 +5,44 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "../include/lobby.h"
-#include "../include/client_serv.h"
-
-#define NB_USERS 10
-#define NB_CHAR_PER_USERPWD 30
+#include "lobby.h"
+#include "client_serv.h"
 
 
-char * userPwd [NB_USERS];
-int nbUsers; //nb de user dans la BD
-
-bool loadUsers(char* filename){
+int loadUsers(char* filename, int nbUsers, char** userPwd){
   FILE *fptr;
   fptr = fopen(filename,"r");
 
   if(fptr == NULL)
   {
     printf("Erreur à l'ouverture du fichier %s!",filename);   
-    return(false);           
+    return nbUsers;           
   }
 
-  for(int i=0;i<NB_USERS;i++){
+  for(int i=0;i<MAX_CLIENTS;i++){
     userPwd[i]=malloc(sizeof(char)*NB_CHAR_PER_USERPWD);
   }
 
   char line[NB_CHAR_PER_USERPWD];
-  nbUsers=0;
   while(fgets(line,sizeof(line)/sizeof(char),fptr)){
-    userPwd[nbUsers] = line;  
-    nbUsers++;
+   line[strcspn(line, "\r\n")] = '\0'; //retire le \r\n de la chaine
+   strcpy(userPwd[nbUsers],line);
+   nbUsers++;
   }
-
   fclose(fptr);
-  return true;
+  return nbUsers;
 }
 
-bool authentification(char* userpassword){
+
+bool authentification(char* userpassword, int nbUsers, char** userPwd){
+   puts(userPwd[0]);
+   puts(userPwd[1]);
+   puts("authentification en cours");
+   
    for (int i=0; i<nbUsers;i++){
       puts(userPwd[i]);
+      puts("buffer :");
+      puts(userpassword);
       if (strcmp(userPwd[i],userpassword)==0){
          puts(userPwd[i]);
          return true;
@@ -77,7 +77,16 @@ static void end(void)
 static void app(void)
 {
    SOCKET sock = init_connection();
-   loadUsers("./server/users");
+   
+   char * userPwd [MAX_CLIENTS];
+   int nbUsers = 0; //nb de user dans la BD
+   nbUsers = loadUsers("./server/users", nbUsers, userPwd);
+   if (nbUsers==0)
+      {
+      puts("Erreur lors du chargement des utilisateurs");
+      exit(EXIT_FAILURE);
+   }
+
    char buffer[BUF_SIZE];
    /* the index for the array */
    int actual = 0;
@@ -137,14 +146,16 @@ static void app(void)
 
          puts("check authentification");
          puts(buffer);
-         if (!authentification(buffer)){
+         if (!authentification(buffer, nbUsers, userPwd)){
             puts("Wrong user or password");
+            write_client(csock, "Wrong user or password");
             continue;
          }
-         puts("Authentification succeed");
-
 
          char * name = strtok(buffer,";");
+         char connectedUser [20] ="";
+         puts(strcat(strcat(connectedUser,name)," connected"));
+         write_client(csock, "Authentification succeed");
 
          /* what is the new maximum fd ? */
          max = csock > max ? csock : max;
