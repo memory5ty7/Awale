@@ -4,6 +4,7 @@
         "lobby.h": "c",
         "client_serv.h": "c",
         "game_session.h": "c",
-        "game.h": "c"
+        "game.h": "c",
+        "server.h": "c"
     }
 }
