@@ -9,7 +9,15 @@
 
 #define NB_USERS 10
 #define NB_CHAR_PER_USERPWD 30
-
+/*
+- pouvoir login et register sur le serv et pas en ligne de commande
+- afficher les joueurs en ligne et pouvoir challenger qu'on veut
+- persistance des parties ou des users
+- chat in game
+- replay des parties
+- spec des parties en cours (et participer au chat)
+- rajouter un système de score ou ratio pour les joueurs
+*/
 char *userPwd[NB_USERS];
 int nbUsers; // nb de user dans la BD
 
