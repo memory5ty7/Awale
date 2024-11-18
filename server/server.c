@@ -15,21 +15,6 @@ int nbUsers; // nb de user dans la BD
 
 char buffer[BUF_SIZE];
 
-bool add_client(Client client)
-{
-   for (int i = 0; i < sizeof(clients) / sizeof(Client); i++)
-   {
-      if (strcmp(clients[i].name, "") == 0)
-      {
-         strncpy(clients[i].name, client.name, BUF_SIZE - 1);
-         clients[i].name[BUF_SIZE - 1] = '\0';
-         clients[i].sock = client.sock;
-         return true;
-      }
-   }
-   return false;
-}
-
 bool loadUsers(char *filename)
 {
    FILE *fptr = fopen(filename, "r");
