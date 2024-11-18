@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -15,8 +14,6 @@ char *userPwd[NB_USERS];
 int nbUsers; // nb de user dans la BD
 
 char buffer[BUF_SIZE];
-
-Client clients[MAX_CLIENTS];
 
 bool add_client(Client client)
 {
@@ -57,7 +54,7 @@ bool loadUsers(char *filename)
    nbUsers = 0;
    while (fgets(line, sizeof(line), fptr) && nbUsers < NB_USERS)
    {
-      line[strcspn(line, "\n")] = '\0'; // Retire le \n
+      line[strcspn(line, "\r\n")] = '\0'; // Retire le \n
       strcpy(userPwd[nbUsers], line);
       nbUsers++;
    }
@@ -97,20 +94,18 @@ static void app(void)
    loadUsers("users");
    Client waiting_clients[2];
    int waiting_count = 0;
+   int nb_clients = 0;
+   int max_fd = sock;
+   /* an array for all clients */
+   Client clients[MAX_CLIENTS];
 
    fd_set rdfs;
-
-   for (int i = 0; i < MAX_CLIENTS; i++)
-   {
-      clients[i].sock = -1;
-      strcpy(clients[i].name, "");
-   }
 
    while (1)
    {
       FD_ZERO(&rdfs);
       FD_SET(sock, &rdfs);
-      int max_fd = sock;
+      
 
       for (int i = 0; i < waiting_count; i++)
       {
@@ -183,22 +178,57 @@ static void app(void)
          }
 
          char *username = strtok(buffer, ";");
-
          strncpy(new_client.name, username, BUF_SIZE - 1);
+         strcat(strcat(strcpy(buffer, "Bonjour "), new_client.name), ". Bienvenu sur Awale! \n");
+         write_client(csock, buffer);
 
-         waiting_clients[waiting_count++] = new_client;
-
-         if (waiting_count == 2)
+         clients[nb_clients] = new_client;
+         nb_clients++;
+      }
+      else
+      {
+         for (int i = 0; i < nb_clients; i++)
          {
-            start_game_session(waiting_clients[0], waiting_clients[1]);
-            waiting_count = 0;
-         }
-         else
-         {
-            write_client(csock, "En attente d'un adversaire...\n");
+            /* a client is talking */
+            if (FD_ISSET(clients[i].sock, &rdfs))
+            {
+               Client client = clients[i];
+               int c = read_client(clients[i].sock, buffer);
+               /* client disconnected */
+               if (c == 0)
+               {
+                  closesocket(client.sock);
+                  remove_client(clients, i, &nb_clients);
+                  strncpy(buffer, client.name, BUF_SIZE - 1);
+                  strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
+                  send_message_to_all_clients(clients, client, nb_clients, buffer, 1);
+               }
+               // client launches game and is put on waiting list
+               else if (strncmp(buffer, "/game", 5) == 0)
+               {
+                  waiting_clients[waiting_count++] = client;
+                  if (waiting_count == 2)
+                  {
+                     start_game_session(waiting_clients[0], waiting_clients[1]);
+                     waiting_count = 0;
+                  }
+                  else
+                  {
+                     write_client(clients[i].sock, "En attente d'un adversaire...\n");
+                  }
+               }
+               else if (strncmp(buffer, "/msg", 4) == 0)
+               {
+                  send_private_message(clients, client, nb_clients, buffer, 0);
+               }
+               else
+               {
+                  send_message_to_all_clients(clients, client, nb_clients, buffer, 0);
+               }
+               break;
+            }
          }
       }
-
       for (int i = 0; i < session_count; i++)
       {
          if (!sessions[i].active)
@@ -254,12 +284,41 @@ static void send_message_to_all_clients(Client *clients, Client sender, int actu
          if (from_server == 0)
          {
             strncpy(message, sender.name, BUF_SIZE - 1);
-            strncat(message, " : ", sizeof message - strlen(message) - 1);
+            strncat(message, " (chat général) : ", sizeof message - strlen(message) - 1);
          }
          strncat(message, buffer, sizeof message - strlen(message) - 1);
          write_client(clients[i].sock, message);
       }
    }
+}
+
+static void send_private_message(Client *clients, Client sender, int actual, const char *buffer, char from_server)
+{
+   char message[BUF_SIZE];
+   message[0] = 0;
+
+   strtok(buffer, " ");                // ignore the command
+   char *destUser = strtok(NULL, " "); // get the user who needs to receive the message
+   for (int i = 0; i < actual; i++)
+   {
+      /* we only send to the destinator */
+
+      if (clients[i].name == destUser)
+      {
+         if (from_server == 0)
+         {
+            strcpy(message, "[message privé de ");
+            strncat(message, sender.name, BUF_SIZE - 1);
+            strncat(message, "] : ", sizeof message - strlen(message) - 1);
+         }
+         strncat(message, buffer, sizeof message - strlen(message) - 1);
+         write_client(clients[i].sock, message);
+         return;
+      }
+   }
+   // si on a pas return c'est que le destUser renseigné n'existe pas -----------------------------------------------------------------------> faut check aussi s'il est connecté!!!
+
+   write_client(sender.sock, "This user does not exist");
 }
 
 static int init_connection(void)
@@ -357,21 +416,28 @@ void start_game_session(Client player1, Client player2)
 
    snprintf(buffer, BUF_SIZE, "C'est à vous de jouer, %s. Choisissez une case.\n", session->players[session->currentPlayer].name);
    write_client(session->players[session->currentPlayer].sock, buffer);
+   snprintf(buffer, BUF_SIZE, "Tour de %s\n", session->players[session->currentPlayer].name);
+   write_client(session->players[(session->currentPlayer + 1) % 2].sock, buffer);
 }
 
-void addChatMessage(ChatBuffer *chatBuffer, const char *message) {
-    if (chatBuffer->messageCount < CHAT_BUFFER_SIZE) {
-        strncpy(chatBuffer->messages[chatBuffer->messageCount], message, MAX_MESSAGE_LENGTH - 1);
-        chatBuffer->messages[chatBuffer->messageCount][MAX_MESSAGE_LENGTH - 1] = '\0'; // Ensure null-termination
-        chatBuffer->messageCount++;
-    } else {
-        // Overwrite the oldest message in a circular manner
-        for (int i = 1; i < CHAT_BUFFER_SIZE; i++) {
-            strncpy(chatBuffer->messages[i - 1], chatBuffer->messages[i], MAX_MESSAGE_LENGTH);
-        }
-        strncpy(chatBuffer->messages[CHAT_BUFFER_SIZE - 1], message, MAX_MESSAGE_LENGTH - 1);
-        chatBuffer->messages[CHAT_BUFFER_SIZE - 1][MAX_MESSAGE_LENGTH - 1] = '\0';
-    }
+void addChatMessage(ChatBuffer *chatBuffer, const char *message)
+{
+   if (chatBuffer->messageCount < CHAT_BUFFER_SIZE)
+   {
+      strncpy(chatBuffer->messages[chatBuffer->messageCount], message, MAX_MESSAGE_LENGTH - 1);
+      chatBuffer->messages[chatBuffer->messageCount][MAX_MESSAGE_LENGTH - 1] = '\0'; // Ensure null-termination
+      chatBuffer->messageCount++;
+   }
+   else
+   {
+      // Overwrite the oldest message in a circular manner
+      for (int i = 1; i < CHAT_BUFFER_SIZE; i++)
+      {
+         strncpy(chatBuffer->messages[i - 1], chatBuffer->messages[i], MAX_MESSAGE_LENGTH);
+      }
+      strncpy(chatBuffer->messages[CHAT_BUFFER_SIZE - 1], message, MAX_MESSAGE_LENGTH - 1);
+      chatBuffer->messages[CHAT_BUFFER_SIZE - 1][MAX_MESSAGE_LENGTH - 1] = '\0';
+   }
 }
 
 void handle_game_session(GameSession *session)
@@ -394,7 +460,7 @@ void handle_game_session(GameSession *session)
       session->active = false;
       return;
    }
-   //buffer[result] = '\0';
+   // buffer[result] = '\0';
 
    if (strncmp(buffer, "/chat ", 6) == 0)
    {
@@ -402,15 +468,20 @@ void handle_game_session(GameSession *session)
       addChatMessage(&session->chatBuffer, chatMessage);
 
       snprintf(buffer, sizeof(buffer), "Chat: %s\n", chatMessage);
-      for(int i=0;i<sizeof(players)/sizeof(Client);i++){
-         if(i!=currentPlayer&&i!=0){
+      for (int i = 0; i < sizeof(players) / sizeof(Client); i++)
+      {
+         if (i != currentPlayer && i != 0)
+         {
             write_client(players[i].sock, buffer);
          }
       }
-      for(int i=0;i<sizeof(session->spectators)/sizeof(Client);i++){
+      for (int i = 0; i < sizeof(session->spectators) / sizeof(Client); i++)
+      {
          write_client(session->spectators[i].sock, buffer);
-      }     
-   } else {
+      }
+   }
+   else
+   {
       int choice = atoi(buffer);
 
       if (checkMove(&(session->game)))
@@ -443,6 +514,9 @@ void handle_game_session(GameSession *session)
       session->currentPlayer = 1 - currentPlayer; // Changer de joueur
       snprintf(buffer, BUF_SIZE, "C'est à vous de jouer, %s. Choisissez une case.\n", players[session->currentPlayer].name);
       write_client(players[session->currentPlayer].sock, buffer);
+
+      snprintf(buffer, BUF_SIZE, "Tour de %s\n", players[session->currentPlayer].name);
+      write_client(players[(session->currentPlayer + 1) % 2].sock, buffer);
 
       displayBoard(buffer, BUF_SIZE, session->game, opponent);
       write_client((*opponent).sock, buffer);
@@ -487,3 +561,5 @@ int main(int argc, char **argv)
 
    return EXIT_SUCCESS;
 }
+
+
