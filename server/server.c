@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -16,7 +15,6 @@
 char *userPwd[NB_USERS];
 int nbUsers; // nb de user dans la BD
 int server_socket;
-int actual = 0;
 
 char buffer[BUF_SIZE];
 
@@ -131,26 +129,6 @@ static void remove_client(Client *clients, int to_remove, int *actual)
    (*actual)--;
 }
 
-static void send_message_to_all_clients(Client *clients, Client sender, int actual, const char *buffer, char from_server)
-{
-   int i = 0;
-   char message[BUF_SIZE];
-   message[0] = 0;
-   for (i = 0; i < actual; i++)
-   {
-      /* we don't send message to the sender */
-      if (sender.sock != clients[i].sock)
-      {
-         if (from_server == 0)
-         {
-            strncpy(message, sender.name, BUF_SIZE - 1);
-            strncat(message, " : ", sizeof message - strlen(message) - 1);
-         }
-         strncat(message, buffer, sizeof message - strlen(message) - 1);
-         write_client(clients[i].sock, message);
-      }
-   }
-}
 
 static int init_connection(void)
 {
@@ -368,14 +346,13 @@ static void app(void)
    int nb_clients = 0;
    int max_fd = sock;
    Client clients[MAX_CLIENTS] = {NULL};
-  
+
    fd_set rdfs;
 
    while (1)
    {
       FD_ZERO(&rdfs);
       FD_SET(sock, &rdfs);
-      
 
       for (int i = 0; i < waiting_count; i++)
       {
@@ -386,6 +363,11 @@ static void app(void)
          }
       }
 
+      /* add socket of each client */
+      for (int i = 0; i < nb_clients; i++)
+      {
+         FD_SET(clients[i].sock, &rdfs);
+      }
       for (int i = 0; i < session_count; i++)
       {
          if (!sessions[i].active)
@@ -405,11 +387,9 @@ static void app(void)
          perror("select()");
          exit(errno);
       }
-
       if (FD_ISSET(sock, &rdfs))
       {
-
-                  SOCKADDR_IN csin = {0};
+         SOCKADDR_IN csin = {0};
          size_t sinsize = sizeof(csin);
          int csock = accept(sock, (SOCKADDR *)&csin, &sinsize);
          if (csock == SOCKET_ERROR)
@@ -424,13 +404,12 @@ static void app(void)
             continue;
          }
 
-         if (!authentification(buffer))
+         else if (!authentification(buffer))
          {
             write_client(csock, "Mauvais utilisateur ou mot de passe.\n");
             closesocket(csock);
             continue;
          }
-
          Client new_client = {csock};
          char *username = strtok(buffer, ";");
          strncpy(new_client.name, username, BUF_SIZE - 1);
@@ -442,21 +421,27 @@ static void app(void)
             continue;
          }
 
-         if (!add_client(clients, new_client))
+         if (nb_clients == MAX_CLIENTS)
          {
-            actual++;
             write_client(csock, "Il n'y a plus de place sur le serveur.\n");
             closesocket(csock);
             continue;
          }
+         else
+         {
+            /* what is the new maximum fd ? */
+            max_fd = csock > max_fd ? csock : max_fd;
 
-         char *username = strtok(buffer, ";");
-         strncpy(new_client.name, username, BUF_SIZE - 1);
-         strcat(strcat(strcpy(buffer, "Bonjour "), new_client.name), ". Bienvenu sur Awale! \n");
-         write_client(csock, buffer);
+            FD_SET(csock, &rdfs);
+            strncpy(new_client.name, username, BUF_SIZE - 1);
+            strcat(strcat(strcpy(buffer, "Bonjour "), new_client.name), ". Bienvenu sur Awale! \n");
+            write_client(csock, buffer);
 
-         clients[nb_clients] = new_client;
-         nb_clients++;
+            clients[nb_clients] = new_client;
+            nb_clients++;
+            strcpy(buffer, new_client.name);
+            puts(strcat(buffer, " connected"));
+         }
       }
       else
       {
@@ -548,26 +533,66 @@ static void send_private_message(Client *clients, Client sender, int actual, con
 
    strtok(buffer, " ");                // ignore the command
    char *destUser = strtok(NULL, " "); // get the user who needs to receive the message
+   char *msg = strtok(NULL, "");       // get the message
    for (int i = 0; i < actual; i++)
    {
       /* we only send to the destinator */
 
-      if (clients[i].name == destUser)
+      if (strcmp(clients[i].name, destUser) == 0)
       {
          if (from_server == 0)
          {
             strcpy(message, "[message privé de ");
-            strncat(message, sender.name, BUF_SIZE - 1);
+            strcat(message, sender.name);
             strncat(message, "] : ", sizeof message - strlen(message) - 1);
          }
-         strncat(message, buffer, sizeof message - strlen(message) - 1);
+         strcat(message, msg);
          write_client(clients[i].sock, message);
          return;
       }
    }
-   // si on a pas return c'est que le destUser renseigné n'existe pas -----------------------------------------------------------------------> faut check aussi s'il est connecté!!!
+  // si on a pas return c'est que le destUser renseigné n'existe pas -----------------------------------------------------------------------> faut check aussi s'il est connecté!!!
+   write_client(sender.sock, "This user is not connected or does not exist.\n");
+}
 
-   write_client(sender.sock, "This user does not exist");
+
+void start_game_session(Client player1, Client player2)
+{
+
+   if (session_count >= MAX_SESSIONS)
+   {
+      write_client(player1.sock, "Le serveur est plein.\n");
+      write_client(player2.sock, "Le serveur est plein.\n");
+      closesocket(player1.sock);
+      closesocket(player2.sock);
+      return;
+   }
+
+   GameSession *session = &sessions[session_count++];
+   session->players[0] = player1;
+   session->players[1] = player2;
+   session->game = initGame(1);
+   session->currentPlayer = 0;
+   session->active = true;
+
+   char msg[1024];
+
+   snprintf(msg, sizeof(msg), "La partie contre %s commence !\n", player2.name);
+   write_client(player1.sock, msg);
+
+   snprintf(msg, sizeof(msg), "La partie contre %s commence !\n", player1.name);
+   write_client(player2.sock, msg);
+
+   displayBoard(buffer, BUF_SIZE, session->game, 0);
+   write_client(session->players[0].sock, buffer);
+
+   displayBoard(buffer, BUF_SIZE, session->game, 1);
+   write_client(session->players[1].sock, buffer);
+
+   snprintf(buffer, BUF_SIZE, "C'est à vous de jouer, %s. Choisissez une case.\n", session->players[session->currentPlayer].name);
+   write_client(session->players[session->currentPlayer].sock, buffer);
+   snprintf(buffer, BUF_SIZE, "Tour de %s\n", session->players[session->currentPlayer].name);
+   write_client(session->players[(session->currentPlayer + 1) % 2].sock, buffer);
 }
 
 void addChatMessage(ChatBuffer *chatBuffer, const char *message)

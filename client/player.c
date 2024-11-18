@@ -85,7 +85,7 @@ static void app(const char *address, const char *name, const char *pwd)
             printf("Wrong user or password\n");
             break;
          }
-         puts(buffer);
+      puts(buffer);
       }
    }
 
