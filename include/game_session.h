@@ -15,6 +15,7 @@ typedef struct {
     bool active;
     Client spectators[6];
     ChatBuffer chatBuffer;
+    char fileName[8];
 } GameSession;
 
 GameSession sessions[MAX_SESSIONS];  // Toutes les sessions de jeu

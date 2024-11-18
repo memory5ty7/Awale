@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <time.h>
 
 #include "../include/lobby.h"
 #include "../include/game_session.h"
@@ -15,10 +16,9 @@
 char *userPwd[NB_USERS];
 int nbUsers; // nb de user dans la BD
 int server_socket;
+int actual = 0;
 
 char buffer[BUF_SIZE];
-
-Client clients[MAX_CLIENTS];
 
 void cleanup(int signum)
 {
@@ -26,15 +26,23 @@ void cleanup(int signum)
    exit(0);
 }
 
-bool add_client(Client client)
+bool add_client(Client **clients, Client client)
 {
-   for (int i = 0; i < sizeof(clients) / sizeof(Client); i++)
+   for (int i = 0; i < MAX_CLIENTS; i++)
    {
-      if (strcmp(clients[i].name, "") == 0)
+      if (clients[i] == NULL)
       {
-         strncpy(clients[i].name, client.name, BUF_SIZE - 1);
-         clients[i].name[BUF_SIZE - 1] = '\0';
-         clients[i].sock = client.sock;
+         clients[i] = malloc(sizeof(Client));
+         if (clients[i] == NULL)
+         {
+            perror("malloc");
+            return false;
+         }
+
+         strncpy(clients[i]->name, client.name, BUF_SIZE - 1);
+         clients[i]->name[BUF_SIZE - 1] = '\0';
+         clients[i]->sock = client.sock;
+
          return true;
       }
    }
@@ -105,14 +113,9 @@ static void app(void)
    loadUsers("users");
    Client waiting_clients[2];
    int waiting_count = 0;
-
+   Client clients[MAX_CLIENTS] = {NULL};
+   ;
    fd_set rdfs;
-
-   for (int i = 0; i < MAX_CLIENTS; i++)
-   {
-      clients[i].sock = -1;
-      strcpy(clients[i].name, "");
-   }
 
    while (1)
    {
@@ -174,39 +177,29 @@ static void app(void)
             continue;
          }
 
-         if (check_if_player_is_connected(csock))
+         Client new_client = {csock};
+         char *username = strtok(buffer, ";");
+         strncpy(new_client.name, username, BUF_SIZE - 1);
+
+         if (check_if_player_is_connected(clients, new_client.name))
          {
             write_client(csock, "Vous êtes déjà connecté.\n");
             closesocket(csock);
             continue;
          }
 
-         Client new_client = {csock};
-
-         if (!add_client(new_client))
+         if (!add_client(clients, new_client))
          {
+            actual++;
             write_client(csock, "Il n'y a plus de place sur le serveur.\n");
             closesocket(csock);
             continue;
          }
 
-         char *username = strtok(buffer, ";");
-
-         strncpy(new_client.name, username, BUF_SIZE - 1);
-
          waiting_clients[waiting_count++] = new_client;
-
-         if (waiting_count == 2)
-         {
-            start_game_session(waiting_clients[0], waiting_clients[1]);
-            waiting_count = 0;
-         }
-         else
-         {
-            write_client(csock, "En attente d'un adversaire...\n");
-         }
       }
 
+      // Parties en cours
       for (int i = 0; i < session_count; i++)
       {
          if (!sessions[i].active)
@@ -348,6 +341,16 @@ void start_game_session(Client player1, Client player2)
    session->game = initGame(1);
    session->active = true;
 
+   char filename[16];
+   time_t current_time = time(NULL);
+   struct tm *local_time = localtime(&current_time);
+   int hours = local_time->tm_hour;
+   int minutes = local_time->tm_min;
+   int seconds = local_time->tm_sec;
+   snprintf(filename, sizeof(filename), "%02d:%02d:%02d\n", hours, minutes);
+   strcpy(session->fileName, filename);
+   write_client(player1.sock, session->fileName);
+   write_client(player2.sock, session->fileName);
    char msg[1024];
 
    snprintf(msg, sizeof(msg), "La partie contre %s commence !\n", player2.name);
@@ -442,16 +445,16 @@ void end_game(GameSession *session)
    session->active = false;
 }
 
-int check_if_player_is_connected(SOCKET sock)
+int check_if_player_is_connected(Client **clients, char *name)
 {
-   for (int i = 0; i < sizeof(clients) / sizeof(Client); i++)
+   for (int i = 0; i < MAX_CLIENTS; i++)
    {
-      if (clients[i].sock == sock)
+      if (clients[i] != NULL && strcmp(clients[i]->name, name) == 0)
       {
-         return 1;
+         return 1; // Player found
       }
    }
-   return 0;
+   return 0; // Player not found
 }
 
 int main(int argc, char **argv)
