@@ -15,10 +15,11 @@
 - pouvoir login et register sur le serv et pas en ligne de commande
 - afficher les joueurs en ligne et pouvoir challenger qu'on veut
 - persistance des parties ou des users
-- chat in game
+- chat in game (ajouter un statut in game aux clients puis gérer en fonction du statut vers ligne 420 et + )
 - replay des parties
 - spec des parties en cours (et participer au chat)
 - rajouter un système de score ou ratio pour les joueurs
+- ajouter une commande /quit pour quitter le serveur (pas brutalement)
 */
 char *userPwd[NB_USERS];
 int nbUsers; // nb de user dans la BD
@@ -50,7 +51,7 @@ bool loadUsers(char *filename)
    nbUsers = 0;
    while (fgets(line, sizeof(line), fptr) && nbUsers < NB_USERS)
    {
-      line[strcspn(line, "\n")] = '\0'; // Retire le \n
+      line[strcspn(line, "\r\n")] = '\0'; // Retire le \n
       strcpy(userPwd[nbUsers], line);
       nbUsers++;
    }
@@ -291,30 +292,21 @@ void end_game(GameSession *session)
    session->active = false;
 }
 
-int check_if_player_is_connected(Client **clients, char *name)
+int check_if_player_is_connected(Client *clients, char *name, int nb_clients)
 {
-   for (int i = 0; i < MAX_CLIENTS; i++)
+   
+   for (int i = 0; i < nb_clients ; i++)
    {
-      if (clients[i] != NULL && strcmp(clients[i]->name, name) == 0)
+      puts("dans la boucle");
+      if (strcmp(clients[i].name, name) == 0)
       {
+         puts("player is already connected");
          return 1; // Player found
       }
    }
    return 0; // Player not found
 }
 
-int main(int argc, char **argv)
-{
-   signal(SIGINT, cleanup);
-
-   init();
-
-   app();
-
-   end();
-
-   return EXIT_SUCCESS;
-}
 
 static void app(void)
 {
@@ -324,8 +316,7 @@ static void app(void)
    int waiting_count = 0;
    int nb_clients = 0;
    int max_fd = sock;
-   Client clients[MAX_CLIENTS] = {NULL};
-
+   Client clients[MAX_CLIENTS];
    fd_set rdfs;
 
    while (1)
@@ -382,8 +373,8 @@ static void app(void)
             closesocket(csock);
             continue;
          }
-
-         else if (!authentification(buffer))
+         puts(buffer);
+         if (!authentification(buffer))
          {
             write_client(csock, "Mauvais utilisateur ou mot de passe.\n");
             closesocket(csock);
@@ -392,14 +383,16 @@ static void app(void)
          Client new_client = {csock};
          char *username = strtok(buffer, ";");
          strncpy(new_client.name, username, BUF_SIZE - 1);
+         puts("before check_if_player_is_connected");
 
-         if (check_if_player_is_connected(clients, new_client.name))
+         if (check_if_player_is_connected(clients, new_client.name, nb_clients))
          {
+            puts("player is already connected");
             write_client(csock, "Vous êtes déjà connecté.\n");
             closesocket(csock);
             continue;
          }
-
+         puts("after check_if_player_is_connected");
          if (nb_clients == MAX_CLIENTS)
          {
             write_client(csock, "Il n'y a plus de place sur le serveur.\n");
@@ -472,7 +465,7 @@ static void app(void)
             continue;
 
          GameSession *session = &sessions[i];
-         Client *current = &session->players[session->currentPlayer];
+         Client *current = &session->players[session->game.current];
 
          if (FD_ISSET(current->sock, &rdfs))
          {
@@ -534,65 +527,6 @@ static void send_private_message(Client *clients, Client sender, int actual, con
    write_client(sender.sock, "This user is not connected or does not exist.\n");
 }
 
-
-void start_game_session(Client player1, Client player2)
-{
-
-   if (session_count >= MAX_SESSIONS)
-   {
-      write_client(player1.sock, "Le serveur est plein.\n");
-      write_client(player2.sock, "Le serveur est plein.\n");
-      closesocket(player1.sock);
-      closesocket(player2.sock);
-      return;
-   }
-
-   GameSession *session = &sessions[session_count++];
-   session->players[0] = player1;
-   session->players[1] = player2;
-   session->game = initGame(1);
-   session->currentPlayer = 0;
-   session->active = true;
-
-   char msg[1024];
-
-   snprintf(msg, sizeof(msg), "La partie contre %s commence !\n", player2.name);
-   write_client(player1.sock, msg);
-
-   snprintf(msg, sizeof(msg), "La partie contre %s commence !\n", player1.name);
-   write_client(player2.sock, msg);
-
-   displayBoard(buffer, BUF_SIZE, session->game, 0);
-   write_client(session->players[0].sock, buffer);
-
-   displayBoard(buffer, BUF_SIZE, session->game, 1);
-   write_client(session->players[1].sock, buffer);
-
-   snprintf(buffer, BUF_SIZE, "C'est à vous de jouer, %s. Choisissez une case.\n", session->players[session->currentPlayer].name);
-   write_client(session->players[session->currentPlayer].sock, buffer);
-   snprintf(buffer, BUF_SIZE, "Tour de %s\n", session->players[session->currentPlayer].name);
-   write_client(session->players[(session->currentPlayer + 1) % 2].sock, buffer);
-}
-
-void addChatMessage(ChatBuffer *chatBuffer, const char *message)
-{
-   if (chatBuffer->messageCount < CHAT_BUFFER_SIZE)
-   {
-      strncpy(chatBuffer->messages[chatBuffer->messageCount], message, MAX_MESSAGE_LENGTH - 1);
-      chatBuffer->messages[chatBuffer->messageCount][MAX_MESSAGE_LENGTH - 1] = '\0'; // Ensure null-termination
-      chatBuffer->messageCount++;
-   }
-   else
-   {
-      // Overwrite the oldest message in a circular manner
-      for (int i = 1; i < CHAT_BUFFER_SIZE; i++)
-      {
-         strncpy(chatBuffer->messages[i - 1], chatBuffer->messages[i], MAX_MESSAGE_LENGTH);
-      }
-      strncpy(chatBuffer->messages[CHAT_BUFFER_SIZE - 1], message, MAX_MESSAGE_LENGTH - 1);
-      chatBuffer->messages[CHAT_BUFFER_SIZE - 1][MAX_MESSAGE_LENGTH - 1] = '\0';
-   }
-}
 
 int main(int argc, char **argv)
 {
