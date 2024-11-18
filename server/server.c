@@ -54,7 +54,7 @@ bool loadUsers(char *filename)
    nbUsers = 0;
    while (fgets(line, sizeof(line), fptr) && nbUsers < NB_USERS)
    {
-      line[strcspn(line, "\r\n")] = '\0'; // Retire le \n
+      line[strcspn(line, "\n")] = '\0'; // Retire le \n
       strcpy(userPwd[nbUsers], line);
       nbUsers++;
    }
@@ -105,7 +105,6 @@ static void app(void)
    {
       FD_ZERO(&rdfs);
       FD_SET(sock, &rdfs);
-      
 
       for (int i = 0; i < waiting_count; i++)
       {
@@ -116,6 +115,11 @@ static void app(void)
          }
       }
 
+      /* add socket of each client */
+      for (int i = 0; i < nb_clients; i++)
+      {
+         FD_SET(clients[i].sock, &rdfs);
+      }
       for (int i = 0; i < session_count; i++)
       {
          if (!sessions[i].active)
@@ -135,10 +139,8 @@ static void app(void)
          perror("select()");
          exit(errno);
       }
-
       if (FD_ISSET(sock, &rdfs))
       {
-
          SOCKADDR_IN csin = {0};
          size_t sinsize = sizeof(csin);
          int csock = accept(sock, (SOCKADDR *)&csin, &sinsize);
@@ -154,36 +156,43 @@ static void app(void)
             continue;
          }
 
-         if (!authentification(buffer))
+         else if (!authentification(buffer))
          {
             write_client(csock, "Mauvais utilisateur ou mot de passe.\n");
             closesocket(csock);
             continue;
          }
 
-         if (check_if_player_is_connected(csock))
+         else if (check_if_player_is_connected(csock, clients, nb_clients))
          {
             write_client(csock, "Vous êtes déjà connecté.\n");
             closesocket(csock);
             continue;
          }
 
-         Client new_client = {csock};
-
-         if (!add_client(new_client))
+         if (nb_clients == MAX_CLIENTS)
          {
             write_client(csock, "Il n'y a plus de place sur le serveur.\n");
             closesocket(csock);
             continue;
          }
+         else
+         {
+            /* what is the new maximum fd ? */
+            max_fd = csock > max_fd ? csock : max_fd;
 
-         char *username = strtok(buffer, ";");
-         strncpy(new_client.name, username, BUF_SIZE - 1);
-         strcat(strcat(strcpy(buffer, "Bonjour "), new_client.name), ". Bienvenu sur Awale! \n");
-         write_client(csock, buffer);
+            FD_SET(csock, &rdfs);
+            Client new_client = {csock};
+            char *username = strtok(buffer, ";");
+            strncpy(new_client.name, username, BUF_SIZE - 1);
+            strcat(strcat(strcpy(buffer, "Bonjour "), new_client.name), ". Bienvenu sur Awale! \n");
+            write_client(csock, buffer);
 
-         clients[nb_clients] = new_client;
-         nb_clients++;
+            clients[nb_clients] = new_client;
+            nb_clients++;
+            strcpy(buffer, new_client.name);
+            puts(strcat(buffer, " connected"));
+         }
       }
       else
       {
@@ -299,26 +308,26 @@ static void send_private_message(Client *clients, Client sender, int actual, con
 
    strtok(buffer, " ");                // ignore the command
    char *destUser = strtok(NULL, " "); // get the user who needs to receive the message
+   char *msg = strtok(NULL, "");       // get the message
    for (int i = 0; i < actual; i++)
    {
       /* we only send to the destinator */
 
-      if (clients[i].name == destUser)
+      if (strcmp(clients[i].name, destUser) == 0)
       {
          if (from_server == 0)
          {
             strcpy(message, "[message privé de ");
-            strncat(message, sender.name, BUF_SIZE - 1);
+            strcat(message, sender.name);
             strncat(message, "] : ", sizeof message - strlen(message) - 1);
          }
-         strncat(message, buffer, sizeof message - strlen(message) - 1);
+         strcat(message, msg);
          write_client(clients[i].sock, message);
          return;
       }
    }
-   // si on a pas return c'est que le destUser renseigné n'existe pas -----------------------------------------------------------------------> faut check aussi s'il est connecté!!!
 
-   write_client(sender.sock, "This user does not exist");
+   write_client(sender.sock, "This user is not connected or does not exist.\n");
 }
 
 static int init_connection(void)
@@ -539,9 +548,9 @@ void end_game(GameSession *session)
    session->active = false;
 }
 
-int check_if_player_is_connected(SOCKET sock)
+int check_if_player_is_connected(SOCKET sock, Client *clients, int nb_clients)
 {
-   for (int i = 0; i < sizeof(clients) / sizeof(Client); i++)
+   for (int i = 0; i < nb_clients; i++)
    {
       if (clients[i].sock == sock)
       {
@@ -561,5 +570,3 @@ int main(int argc, char **argv)
 
    return EXIT_SUCCESS;
 }
-
-
