@@ -2,6 +2,7 @@
 #define CLIENT_H
 
 #include "lobby.h"
+#include "network.h"
 
 typedef struct
 {

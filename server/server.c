@@ -3,6 +3,8 @@
 #include <errno.h>
 #include <string.h>
 #include <stdbool.h>
+#include <signal.h>
+#include <time.h>
 
 #include "../include/lobby.h"
 #include "../include/game_session.h"
@@ -12,18 +14,33 @@
 
 char *userPwd[NB_USERS];
 int nbUsers; // nb de user dans la BD
+int server_socket;
 
 char buffer[BUF_SIZE];
 
-bool add_client(Client client)
+void cleanup(int signum)
 {
-   for (int i = 0; i < sizeof(clients) / sizeof(Client); i++)
+   end_connection(server_socket);
+   exit(0);
+}
+
+bool add_client(Client **clients, Client client)
+{
+   for (int i = 0; i < MAX_CLIENTS; i++)
    {
-      if (strcmp(clients[i].name, "") == 0)
+      if (clients[i] == NULL)
       {
-         strncpy(clients[i].name, client.name, BUF_SIZE - 1);
-         clients[i].name[BUF_SIZE - 1] = '\0';
-         clients[i].sock = client.sock;
+         clients[i] = malloc(sizeof(Client));
+         if (clients[i] == NULL)
+         {
+            perror("malloc");
+            return false;
+         }
+
+         strncpy(clients[i]->name, client.name, BUF_SIZE - 1);
+         clients[i]->name[BUF_SIZE - 1] = '\0';
+         clients[i]->sock = client.sock;
+
          return true;
       }
    }
@@ -88,174 +105,6 @@ static void init(void)
 #endif
 }
 
-static void app(void)
-{
-   SOCKET sock = init_connection();
-   loadUsers("users");
-   Client waiting_clients[2];
-   int waiting_count = 0;
-   int nb_clients = 0;
-   int max_fd = sock;
-   /* an array for all clients */
-   Client clients[MAX_CLIENTS];
-
-   fd_set rdfs;
-
-   while (1)
-   {
-      FD_ZERO(&rdfs);
-      FD_SET(sock, &rdfs);
-
-      for (int i = 0; i < waiting_count; i++)
-      {
-         FD_SET(waiting_clients[i].sock, &rdfs);
-         if (waiting_clients[i].sock > max_fd)
-         {
-            max_fd = waiting_clients[i].sock;
-         }
-      }
-
-      /* add socket of each client */
-      for (int i = 0; i < nb_clients; i++)
-      {
-         FD_SET(clients[i].sock, &rdfs);
-      }
-      for (int i = 0; i < session_count; i++)
-      {
-         if (!sessions[i].active)
-            continue;
-         for (int j = 0; j < 2; j++)
-         {
-            FD_SET(sessions[i].players[j].sock, &rdfs);
-            if (sessions[i].players[j].sock > max_fd)
-            {
-               max_fd = sessions[i].players[j].sock;
-            }
-         }
-      }
-
-      if (select(max_fd + 1, &rdfs, NULL, NULL, NULL) == -1)
-      {
-         perror("select()");
-         exit(errno);
-      }
-      if (FD_ISSET(sock, &rdfs))
-      {
-         SOCKADDR_IN csin = {0};
-         size_t sinsize = sizeof(csin);
-         int csock = accept(sock, (SOCKADDR *)&csin, &sinsize);
-         if (csock == SOCKET_ERROR)
-         {
-            perror("accept()");
-            continue;
-         }
-
-         if (read_client(csock, buffer) <= 0)
-         {
-            closesocket(csock);
-            continue;
-         }
-
-         else if (!authentification(buffer))
-         {
-            write_client(csock, "Mauvais utilisateur ou mot de passe.\n");
-            closesocket(csock);
-            continue;
-         }
-
-         else if (check_if_player_is_connected(csock, clients, nb_clients))
-         {
-            write_client(csock, "Vous êtes déjà connecté.\n");
-            closesocket(csock);
-            continue;
-         }
-
-         if (nb_clients == MAX_CLIENTS)
-         {
-            write_client(csock, "Il n'y a plus de place sur le serveur.\n");
-            closesocket(csock);
-            continue;
-         }
-         else
-         {
-            /* what is the new maximum fd ? */
-            max_fd = csock > max_fd ? csock : max_fd;
-
-            FD_SET(csock, &rdfs);
-            Client new_client = {csock};
-            char *username = strtok(buffer, ";");
-            strncpy(new_client.name, username, BUF_SIZE - 1);
-            strcat(strcat(strcpy(buffer, "Bonjour "), new_client.name), ". Bienvenu sur Awale! \n");
-            write_client(csock, buffer);
-
-            clients[nb_clients] = new_client;
-            nb_clients++;
-            strcpy(buffer, new_client.name);
-            puts(strcat(buffer, " connected"));
-         }
-      }
-      else
-      {
-         for (int i = 0; i < nb_clients; i++)
-         {
-            /* a client is talking */
-            if (FD_ISSET(clients[i].sock, &rdfs))
-            {
-               Client client = clients[i];
-               int c = read_client(clients[i].sock, buffer);
-               /* client disconnected */
-               if (c == 0)
-               {
-                  closesocket(client.sock);
-                  remove_client(clients, i, &nb_clients);
-                  strncpy(buffer, client.name, BUF_SIZE - 1);
-                  strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
-                  send_message_to_all_clients(clients, client, nb_clients, buffer, 1);
-               }
-               // client launches game and is put on waiting list
-               else if (strncmp(buffer, "/game", 5) == 0)
-               {
-                  waiting_clients[waiting_count++] = client;
-                  if (waiting_count == 2)
-                  {
-                     start_game_session(waiting_clients[0], waiting_clients[1]);
-                     waiting_count = 0;
-                  }
-                  else
-                  {
-                     write_client(clients[i].sock, "En attente d'un adversaire...\n");
-                  }
-               }
-               else if (strncmp(buffer, "/msg", 4) == 0)
-               {
-                  send_private_message(clients, client, nb_clients, buffer, 0);
-               }
-               else
-               {
-                  send_message_to_all_clients(clients, client, nb_clients, buffer, 0);
-               }
-               break;
-            }
-         }
-      }
-      for (int i = 0; i < session_count; i++)
-      {
-         if (!sessions[i].active)
-            continue;
-
-         GameSession *session = &sessions[i];
-         Client *current = &session->players[session->currentPlayer];
-
-         if (FD_ISSET(current->sock, &rdfs))
-         {
-            handle_game_session(session);
-         }
-      }
-   }
-
-   end_connection(sock);
-}
-
 static void end(void)
 {
 #ifdef WIN32
@@ -280,55 +129,6 @@ static void remove_client(Client *clients, int to_remove, int *actual)
    (*actual)--;
 }
 
-static void send_message_to_all_clients(Client *clients, Client sender, int actual, const char *buffer, char from_server)
-{
-   int i = 0;
-   char message[BUF_SIZE];
-   message[0] = 0;
-   for (i = 0; i < actual; i++)
-   {
-      /* we don't send message to the sender */
-      if (sender.sock != clients[i].sock)
-      {
-         if (from_server == 0)
-         {
-            strncpy(message, sender.name, BUF_SIZE - 1);
-            strncat(message, " (chat général) : ", sizeof message - strlen(message) - 1);
-         }
-         strncat(message, buffer, sizeof message - strlen(message) - 1);
-         write_client(clients[i].sock, message);
-      }
-   }
-}
-
-static void send_private_message(Client *clients, Client sender, int actual, const char *buffer, char from_server)
-{
-   char message[BUF_SIZE];
-   message[0] = 0;
-
-   strtok(buffer, " ");                // ignore the command
-   char *destUser = strtok(NULL, " "); // get the user who needs to receive the message
-   char *msg = strtok(NULL, "");       // get the message
-   for (int i = 0; i < actual; i++)
-   {
-      /* we only send to the destinator */
-
-      if (strcmp(clients[i].name, destUser) == 0)
-      {
-         if (from_server == 0)
-         {
-            strcpy(message, "[message privé de ");
-            strcat(message, sender.name);
-            strncat(message, "] : ", sizeof message - strlen(message) - 1);
-         }
-         strcat(message, msg);
-         write_client(clients[i].sock, message);
-         return;
-      }
-   }
-
-   write_client(sender.sock, "This user is not connected or does not exist.\n");
-}
 
 static int init_connection(void)
 {
@@ -406,6 +206,372 @@ void start_game_session(Client player1, Client player2)
    session->players[0] = player1;
    session->players[1] = player2;
    session->game = initGame(1);
+   session->active = true;
+
+   char filename[16];
+   time_t current_time = time(NULL);
+   struct tm *local_time = localtime(&current_time);
+   int hours = local_time->tm_hour;
+   int minutes = local_time->tm_min;
+   int seconds = local_time->tm_sec;
+   snprintf(filename, sizeof(filename), "%02d:%02d:%02d\n", hours, minutes);
+   strcpy(session->fileName, filename);
+   write_client(player1.sock, session->fileName);
+   write_client(player2.sock, session->fileName);
+   char msg[1024];
+
+   snprintf(msg, sizeof(msg), "La partie contre %s commence !\n", player2.name);
+   write_client(player1.sock, msg);
+
+   snprintf(msg, sizeof(msg), "La partie contre %s commence !\n", player1.name);
+   write_client(player2.sock, msg);
+
+   checkMove(&(session->game), session->game.current);
+
+   displayBoard(buffer, BUF_SIZE, session->game, 0);
+   write_client(session->players[0].sock, buffer);
+
+   displayBoard(buffer, BUF_SIZE, session->game, 1);
+   write_client(session->players[1].sock, buffer);
+}
+
+void handle_game_session(GameSession *session)
+{
+   Client *players;
+   Client *current;
+   Client *opponent;
+
+   players = session->players;
+   current = &players[session->game.current];
+   opponent = &players[1 - session->game.current];
+
+   char buffer[BUF_SIZE];
+
+   int result = read_client(current->sock, buffer);
+   if (result <= 0)
+   {
+      snprintf(buffer, BUF_SIZE, "%s a quitté la partie. Fin de la partie.\n", current->name);
+      write_client(opponent->sock, buffer);
+
+      end_connection(current->sock);
+      end_connection(opponent->sock);
+
+      session->active = false;
+      return;
+   }
+   buffer[result] = '\0';
+
+   int choice = atoi(buffer);
+
+   if (choice < 1 || choice > 6 || !session->game.movesAllowed[choice - 1])
+   {
+      write_client(current->sock, "Invalid move 1. Try again.\n");
+      return;
+   }
+
+   if (!doMove(&(session->game), choice, session->game.current))
+   {
+      write_client(current->sock, "Invalid move 2. Try again.\n");
+      return;
+   }
+
+   if (checkWin(session->game))
+   {
+      end_game(session);
+      return;
+   }
+
+   session->game.current = 1 - session->game.current;
+
+   if (checkMove(&(session->game), session->game.current))
+   {
+      end_game(session);
+      return;
+   }
+
+   displayBoard(buffer, BUF_SIZE, session->game, 0);
+   write_client(session->players[0].sock, buffer);
+
+   displayBoard(buffer, BUF_SIZE, session->game, 1);
+   write_client(session->players[1].sock, buffer);
+}
+
+void end_game(GameSession *session)
+{
+   snprintf(buffer, BUF_SIZE, "Game over! %s wins!\n", (session->game.stash[0] > session->game.stash[1]) ? session->players[0].name : session->players[1].name);
+
+   SOCKET current = (session->game.stash[0] > session->game.stash[1]) ? session->players[0].sock : session->players[1].sock;
+   SOCKET opponent = (session->game.stash[0] > session->game.stash[1]) ? session->players[1].sock : session->players[0].sock;
+
+   write_client(current, buffer);
+   write_client(opponent, buffer);
+
+   closesocket(current);
+   closesocket(opponent);
+
+   session->active = false;
+}
+
+int check_if_player_is_connected(Client **clients, char *name)
+{
+   for (int i = 0; i < MAX_CLIENTS; i++)
+   {
+      if (clients[i] != NULL && strcmp(clients[i]->name, name) == 0)
+      {
+         return 1; // Player found
+      }
+   }
+   return 0; // Player not found
+}
+
+int main(int argc, char **argv)
+{
+   signal(SIGINT, cleanup);
+
+   init();
+
+   app();
+
+   end();
+
+   return EXIT_SUCCESS;
+}
+
+static void app(void)
+{
+   SOCKET sock = init_connection();
+   loadUsers("users");
+   Client waiting_clients[2];
+   int waiting_count = 0;
+   int nb_clients = 0;
+   int max_fd = sock;
+   Client clients[MAX_CLIENTS] = {NULL};
+
+   fd_set rdfs;
+
+   while (1)
+   {
+      FD_ZERO(&rdfs);
+      FD_SET(sock, &rdfs);
+
+      for (int i = 0; i < waiting_count; i++)
+      {
+         FD_SET(waiting_clients[i].sock, &rdfs);
+         if (waiting_clients[i].sock > max_fd)
+         {
+            max_fd = waiting_clients[i].sock;
+         }
+      }
+
+      /* add socket of each client */
+      for (int i = 0; i < nb_clients; i++)
+      {
+         FD_SET(clients[i].sock, &rdfs);
+      }
+      for (int i = 0; i < session_count; i++)
+      {
+         if (!sessions[i].active)
+            continue;
+         for (int j = 0; j < 2; j++)
+         {
+            FD_SET(sessions[i].players[j].sock, &rdfs);
+            if (sessions[i].players[j].sock > max_fd)
+            {
+               max_fd = sessions[i].players[j].sock;
+            }
+         }
+      }
+
+      if (select(max_fd + 1, &rdfs, NULL, NULL, NULL) == -1)
+      {
+         perror("select()");
+         exit(errno);
+      }
+      if (FD_ISSET(sock, &rdfs))
+      {
+         SOCKADDR_IN csin = {0};
+         size_t sinsize = sizeof(csin);
+         int csock = accept(sock, (SOCKADDR *)&csin, &sinsize);
+         if (csock == SOCKET_ERROR)
+         {
+            perror("accept()");
+            continue;
+         }
+
+         if (read_client(csock, buffer) <= 0)
+         {
+            closesocket(csock);
+            continue;
+         }
+
+         else if (!authentification(buffer))
+         {
+            write_client(csock, "Mauvais utilisateur ou mot de passe.\n");
+            closesocket(csock);
+            continue;
+         }
+         Client new_client = {csock};
+         char *username = strtok(buffer, ";");
+         strncpy(new_client.name, username, BUF_SIZE - 1);
+
+         if (check_if_player_is_connected(clients, new_client.name))
+         {
+            write_client(csock, "Vous êtes déjà connecté.\n");
+            closesocket(csock);
+            continue;
+         }
+
+         if (nb_clients == MAX_CLIENTS)
+         {
+            write_client(csock, "Il n'y a plus de place sur le serveur.\n");
+            closesocket(csock);
+            continue;
+         }
+         else
+         {
+            /* what is the new maximum fd ? */
+            max_fd = csock > max_fd ? csock : max_fd;
+
+            FD_SET(csock, &rdfs);
+            strncpy(new_client.name, username, BUF_SIZE - 1);
+            strcat(strcat(strcpy(buffer, "Bonjour "), new_client.name), ". Bienvenu sur Awale! \n");
+            write_client(csock, buffer);
+
+            clients[nb_clients] = new_client;
+            nb_clients++;
+            strcpy(buffer, new_client.name);
+            puts(strcat(buffer, " connected"));
+         }
+      }
+      else
+      {
+         for (int i = 0; i < nb_clients; i++)
+         {
+            /* a client is talking */
+            if (FD_ISSET(clients[i].sock, &rdfs))
+            {
+               Client client = clients[i];
+               int c = read_client(clients[i].sock, buffer);
+               /* client disconnected */
+               if (c == 0)
+               {
+                  closesocket(client.sock);
+                  remove_client(clients, i, &nb_clients);
+                  strncpy(buffer, client.name, BUF_SIZE - 1);
+                  strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
+                  send_message_to_all_clients(clients, client, nb_clients, buffer, 1);
+               }
+               // client launches game and is put on waiting list
+               else if (strncmp(buffer, "/game", 5) == 0)
+               {
+                  waiting_clients[waiting_count++] = client;
+                  if (waiting_count == 2)
+                  {
+                     start_game_session(waiting_clients[0], waiting_clients[1]);
+                     waiting_count = 0;
+                  }
+                  else
+                  {
+                     write_client(clients[i].sock, "En attente d'un adversaire...\n");
+                  }
+               }
+               else if (strncmp(buffer, "/msg", 4) == 0)
+               {
+                  send_private_message(clients, client, nb_clients, buffer, 0);
+               }
+               else
+               {
+                  send_message_to_all_clients(clients, client, nb_clients, buffer, 0);
+               }
+               break;
+            }
+         }
+      }
+      for (int i = 0; i < session_count; i++)
+      {
+         if (!sessions[i].active)
+            continue;
+
+         GameSession *session = &sessions[i];
+         Client *current = &session->players[session->currentPlayer];
+
+         if (FD_ISSET(current->sock, &rdfs))
+         {
+            handle_game_session(session);
+         }
+      }
+   }
+
+   end_connection(sock);
+}
+
+static void send_message_to_all_clients(Client *clients, Client sender, int actual, const char *buffer, char from_server)
+{
+   int i = 0;
+   char message[BUF_SIZE];
+   message[0] = 0;
+   for (i = 0; i < actual; i++)
+   {
+      /* we don't send message to the sender */
+      if (sender.sock != clients[i].sock)
+      {
+         if (from_server == 0)
+         {
+            strncpy(message, sender.name, BUF_SIZE - 1);
+            strncat(message, " (chat général) : ", sizeof message - strlen(message) - 1);
+         }
+         strncat(message, buffer, sizeof message - strlen(message) - 1);
+         write_client(clients[i].sock, message);
+      }
+   }
+}
+
+static void send_private_message(Client *clients, Client sender, int actual, const char *buffer, char from_server)
+{
+   char message[BUF_SIZE];
+   message[0] = 0;
+
+   strtok(buffer, " ");                // ignore the command
+   char *destUser = strtok(NULL, " "); // get the user who needs to receive the message
+   char *msg = strtok(NULL, "");       // get the message
+   for (int i = 0; i < actual; i++)
+   {
+      /* we only send to the destinator */
+
+      if (strcmp(clients[i].name, destUser) == 0)
+      {
+         if (from_server == 0)
+         {
+            strcpy(message, "[message privé de ");
+            strcat(message, sender.name);
+            strncat(message, "] : ", sizeof message - strlen(message) - 1);
+         }
+         strcat(message, msg);
+         write_client(clients[i].sock, message);
+         return;
+      }
+   }
+  // si on a pas return c'est que le destUser renseigné n'existe pas -----------------------------------------------------------------------> faut check aussi s'il est connecté!!!
+   write_client(sender.sock, "This user is not connected or does not exist.\n");
+}
+
+
+void start_game_session(Client player1, Client player2)
+{
+
+   if (session_count >= MAX_SESSIONS)
+   {
+      write_client(player1.sock, "Le serveur est plein.\n");
+      write_client(player2.sock, "Le serveur est plein.\n");
+      closesocket(player1.sock);
+      closesocket(player2.sock);
+      return;
+   }
+
+   GameSession *session = &sessions[session_count++];
+   session->players[0] = player1;
+   session->players[1] = player2;
+   session->game = initGame(1);
    session->currentPlayer = 0;
    session->active = true;
 
@@ -447,117 +613,6 @@ void addChatMessage(ChatBuffer *chatBuffer, const char *message)
       strncpy(chatBuffer->messages[CHAT_BUFFER_SIZE - 1], message, MAX_MESSAGE_LENGTH - 1);
       chatBuffer->messages[CHAT_BUFFER_SIZE - 1][MAX_MESSAGE_LENGTH - 1] = '\0';
    }
-}
-
-void handle_game_session(GameSession *session)
-{
-   Client *players = session->players;
-   int currentPlayer = session->currentPlayer;
-   Client *current = &players[currentPlayer];
-   Client *opponent = &players[1 - currentPlayer];
-
-   char buffer[BUF_SIZE];
-   int result = read_client(current->sock, buffer);
-   if (result <= 0)
-   {
-      snprintf(buffer, BUF_SIZE, "%s a quitté la partie. Fin de la partie.\n", current->name);
-      write_client(opponent->sock, buffer);
-
-      end_connection(current->sock);
-      end_connection(opponent->sock);
-
-      session->active = false;
-      return;
-   }
-   // buffer[result] = '\0';
-
-   if (strncmp(buffer, "/chat ", 6) == 0)
-   {
-      const char *chatMessage = buffer + 6;
-      addChatMessage(&session->chatBuffer, chatMessage);
-
-      snprintf(buffer, sizeof(buffer), "Chat: %s\n", chatMessage);
-      for (int i = 0; i < sizeof(players) / sizeof(Client); i++)
-      {
-         if (i != currentPlayer && i != 0)
-         {
-            write_client(players[i].sock, buffer);
-         }
-      }
-      for (int i = 0; i < sizeof(session->spectators) / sizeof(Client); i++)
-      {
-         write_client(session->spectators[i].sock, buffer);
-      }
-   }
-   else
-   {
-      int choice = atoi(buffer);
-
-      if (checkMove(&(session->game)))
-      {
-         end_game(session);
-         return;
-      }
-
-      if (choice < 1 || choice > 6 || !session->game.movesAllowed[choice - 1])
-      {
-         write_client(current->sock, "Invalid move. Try again.\n");
-         return;
-      }
-
-      if (!doMove(&(session->game), choice))
-      {
-         write_client(current->sock, "Invalid move 2. Try again.\n");
-         return;
-      }
-
-      if (checkWin(session->game))
-      {
-         end_game(session);
-         return;
-      }
-
-      displayBoard(buffer, BUF_SIZE, session->game, currentPlayer);
-      write_client(session->players[session->currentPlayer].sock, buffer);
-
-      session->currentPlayer = 1 - currentPlayer; // Changer de joueur
-      snprintf(buffer, BUF_SIZE, "C'est à vous de jouer, %s. Choisissez une case.\n", players[session->currentPlayer].name);
-      write_client(players[session->currentPlayer].sock, buffer);
-
-      snprintf(buffer, BUF_SIZE, "Tour de %s\n", players[session->currentPlayer].name);
-      write_client(players[(session->currentPlayer + 1) % 2].sock, buffer);
-
-      displayBoard(buffer, BUF_SIZE, session->game, opponent);
-      write_client((*opponent).sock, buffer);
-   }
-}
-
-void end_game(GameSession *session)
-{
-   snprintf(buffer, BUF_SIZE, "Game over! %s wins!\n", (session->game.stash[0] > session->game.stash[1]) ? session->players[0].name : session->players[1].name);
-
-   SOCKET current = (session->game.stash[0] > session->game.stash[1]) ? session->players[0].sock : session->players[1].sock;
-   SOCKET opponent = (session->game.stash[0] > session->game.stash[1]) ? session->players[1].sock : session->players[0].sock;
-
-   write_client(current, buffer);
-   write_client(opponent, buffer);
-
-   closesocket(current);
-   closesocket(opponent);
-
-   session->active = false;
-}
-
-int check_if_player_is_connected(SOCKET sock, Client *clients, int nb_clients)
-{
-   for (int i = 0; i < nb_clients; i++)
-   {
-      if (clients[i].sock == sock)
-      {
-         return 1;
-      }
-   }
-   return 0;
 }
 
 int main(int argc, char **argv)
