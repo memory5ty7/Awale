@@ -24,8 +24,6 @@ Amaury :
 - spec des parties en cours (et participer au chat)
 
 */
-// nb de user dans la BD
-int server_socket;
 
 bool loadUsers(char *filename, char **userPwd, int *nbUsers)
 {
