@@ -422,26 +422,6 @@ void start_game_session(Client player1, Client player2)
    write_client(session->players[(session->currentPlayer + 1) % 2].sock, buffer);
 }
 
-void addChatMessage(ChatBuffer *chatBuffer, const char *message)
-{
-   if (chatBuffer->messageCount < CHAT_BUFFER_SIZE)
-   {
-      strncpy(chatBuffer->messages[chatBuffer->messageCount], message, MAX_MESSAGE_LENGTH - 1);
-      chatBuffer->messages[chatBuffer->messageCount][MAX_MESSAGE_LENGTH - 1] = '\0'; // Ensure null-termination
-      chatBuffer->messageCount++;
-   }
-   else
-   {
-      // Overwrite the oldest message in a circular manner
-      for (int i = 1; i < CHAT_BUFFER_SIZE; i++)
-      {
-         strncpy(chatBuffer->messages[i - 1], chatBuffer->messages[i], MAX_MESSAGE_LENGTH);
-      }
-      strncpy(chatBuffer->messages[CHAT_BUFFER_SIZE - 1], message, MAX_MESSAGE_LENGTH - 1);
-      chatBuffer->messages[CHAT_BUFFER_SIZE - 1][MAX_MESSAGE_LENGTH - 1] = '\0';
-   }
-}
-
 void handle_game_session(GameSession *session)
 {
    Client *players = session->players;
