@@ -109,11 +109,15 @@ void displayBoard(char *buffer, size_t bufferSize, gameState state, int player)
         offset += snprintf(buffer + offset, bufferSize - offset, "C'est à vous de jouer.\n");
     }
 
-    offset += snprintf(buffer + offset, bufferSize - offset,
-                       "Joueur %d | Stash: %d\n|", !player ? 1 : 2,
-                       state.stash[!player]);
+    if(player!=3){
+        offset += snprintf(buffer + offset, bufferSize - offset,
+                       "Joueur %d | Stash: %d\n|", !player ? 1 : 2, state.stash[!player]);
+    } else {
+        offset += snprintf(buffer + offset, bufferSize - offset,
+                       "Joueur 2 | Stash: %d\n|", state.stash[1]);
+    } 
 
-    if (player==0)
+    if (player==0||player==3)
     {
         for (int i = 11; i > 5; i--)
         {
@@ -137,10 +141,10 @@ void displayBoard(char *buffer, size_t bufferSize, gameState state, int player)
             offset += snprintf(buffer + offset, bufferSize - offset, "%02d|", state.board[i]);
         }
     }
-    offset += snprintf(buffer + offset, bufferSize - offset, "\n  ");
-
+    
     if (state.current==player)
     {
+        offset += snprintf(buffer + offset, bufferSize - offset, "\n  ");
         for (int i = 0; i < 6; i++)
         {
             if (state.movesAllowed[i])
@@ -152,7 +156,11 @@ void displayBoard(char *buffer, size_t bufferSize, gameState state, int player)
                 offset += snprintf(buffer + offset, bufferSize - offset, "   ");
             }
         }
-    }
+    } else if (state.current==1-player&&player!=3) {
+        offset += snprintf(buffer + offset, bufferSize - offset, "\nC'est à l'adversaire de jouer.\n");
+    } else {
+        offset += snprintf(buffer + offset, bufferSize - offset, "Joueur 1 | Stash: %d\n|", state.stash[0]);
+    } 
     snprintf(buffer + offset, bufferSize - offset, "\n");
 }
 

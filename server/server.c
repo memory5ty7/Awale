@@ -16,14 +16,16 @@ Florian :
 - afficher les joueurs en ligne et pouvoir challenger qui on veut
 - ajouter une commande /quit pour quitter le serveur (pas brutalement)
 - pouvoir login et register sur le serv et pas en ligne de commande
+- persistance des users
 - chat in game (ajouter un statut in game aux clients puis gérer en fonction du statut vers ligne 420 et + ) --> /chat pour parler sinon considère que c'est le move
 Amaury :
 - replay des parties
 - rajouter un système de score ou ratio pour les joueurs
-- persistance des parties ou des users
++ persistance des parties
 - spec des parties en cours (et participer au chat)
-
 */
+
+FILE *file;
 
 bool loadUsers(char *filename, char **userPwd, int *nbUsers)
 {
@@ -183,16 +185,28 @@ void start_game_session(char *buffer, Client player1, Client player2, int sessio
    session->game = initGame(1);
    session->active = true;
 
-   char filename[16];
    time_t current_time = time(NULL);
    struct tm *local_time = localtime(&current_time);
    int hours = local_time->tm_hour;
    int minutes = local_time->tm_min;
    int seconds = local_time->tm_sec;
-   snprintf(filename, sizeof(filename), "%02d:%02d:%02d\n", hours, minutes);
+   char filename[16];
+   char foldername[16];
+   sprintf(foldername, "games/");
+   snprintf(filename, sizeof(filename), "%02d:%02d:%02d\n", hours, minutes, seconds);
+   strcat(foldername, filename);
+   sprintf(filename, foldername);
    strcpy(session->fileName, filename);
    write_client(player1.sock, session->fileName);
    write_client(player2.sock, session->fileName);
+
+   file = fopen(filename, "w+");
+   if (file == NULL)
+   {
+      printf("Erreur à l'ouverture du fichier %s\n", filename);
+      return false;
+   }
+
    char msg[1024];
 
    snprintf(msg, sizeof(msg), "La partie contre %s commence !\n", player2.name);
@@ -208,11 +222,13 @@ void start_game_session(char *buffer, Client player1, Client player2, int sessio
 
    displayBoard(buffer, BUF_SIZE, session->game, 1);
    write_client(session->players[1].sock, buffer);
+
+   fprintf(file, "%s;%s;", player1.name, player2.name);
 }
 
-void handle_game_session(char *buffer, int len_buf, GameSession *session)
+void handle_game_session(char *buffer, int len_buf, GameSession *session, Client *client)
 {
-   puts("handle game session");
+   // puts("handle game session");
    Client *players;
    Client *current;
    Client *opponent;
@@ -221,8 +237,8 @@ void handle_game_session(char *buffer, int len_buf, GameSession *session)
    current = &players[session->game.current];
    opponent = &players[1 - session->game.current];
 
-   puts("move of current player : ");
-   puts(buffer);
+   // puts("move of current player : ");
+   // puts(buffer);
    if (len_buf <= 0)
    {
       snprintf(buffer, BUF_SIZE, "%s a quitté la partie. Fin de la partie.\n", current->name);
@@ -231,61 +247,127 @@ void handle_game_session(char *buffer, int len_buf, GameSession *session)
       end_connection(current->sock);
       end_connection(opponent->sock);
 
+      fprintf(file, "0");
+      fclose(file);
       session->active = false;
       return;
    }
    buffer[len_buf] = '\0';
 
-   int choice = atoi(buffer);
+   // Je mets la condition ici tu peux changer si c'est pas la meilleure idée
 
-   if (choice < 1 || choice > 6 || !session->game.movesAllowed[choice - 1])
+   // Seul le joueur actif peut effectuer un move
+   if (strcmp(session->players[session->game.current].name, &client->name) == 0)
    {
-      write_client(current->sock, "Invalid move 1. Try again.\n");
-      return;
+      int choice = atoi(buffer);
+
+      if (choice < 1 || choice > 6 || !session->game.movesAllowed[choice - 1])
+      {
+         write_client(current->sock, "Choix incorrect. Veuillez réessayer.\n");
+         return;
+      }
+
+      if (!doMove(&(session->game), choice, session->game.current))
+      {
+         write_client(current->sock, "Choix incorrect. Veuillez réessayer.\n");
+         return;
+      }
+
+      fprintf(file, "%d;", choice);
+
+      if (checkWin(session->game))
+      {
+         end_game(buffer, session);
+         return;
+      }
+
+      session->game.current = 1 - session->game.current;
+
+      if (checkMove(&(session->game), session->game.current))
+      {
+         end_game(buffer, session);
+         return;
+      }
+
+      displayBoard(buffer, BUF_SIZE, session->game, 0);
+      write_client(session->players[0].sock, buffer);
+
+      displayBoard(buffer, BUF_SIZE, session->game, 1);
+      write_client(session->players[1].sock, buffer);
+      // puts("done handling this turn of game session");
    }
-
-   if (!doMove(&(session->game), choice, session->game.current))
-   {
-      write_client(current->sock, "Invalid move 2. Try again.\n");
-      return;
-   }
-
-   if (checkWin(session->game))
-   {
-      end_game(buffer, session);
-      return;
-   }
-
-   session->game.current = 1 - session->game.current;
-
-   if (checkMove(&(session->game), session->game.current))
-   {
-      end_game(buffer, session);
-      return;
-   }
-
-   displayBoard(buffer, BUF_SIZE, session->game, 0);
-   write_client(session->players[0].sock, buffer);
-
-   displayBoard(buffer, BUF_SIZE, session->game, 1);
-   write_client(session->players[1].sock, buffer);
-   puts("done handling this turn of game session");
 }
 
 void end_game(char *buffer, GameSession *session)
 {
-   snprintf(buffer, BUF_SIZE, "Game over! %s wins!\n", (session->game.stash[0] > session->game.stash[1]) ? session->players[0].name : session->players[1].name);
+   Client winner = (session->game.stash[0] > session->game.stash[1]) ? session->players[0] : session->players[1];
+   Client loser = (session->game.stash[0] > session->game.stash[1]) ? session->players[1] : session->players[0];
 
-   SOCKET current = (session->game.stash[0] > session->game.stash[1]) ? session->players[0].sock : session->players[1].sock;
-   SOCKET opponent = (session->game.stash[0] > session->game.stash[1]) ? session->players[1].sock : session->players[0].sock;
+   snprintf(buffer, BUF_SIZE, "La partie est terminée! %s a gagné!\n", winner.name);
 
-   write_client(current, buffer);
-   write_client(opponent, buffer);
+   write_client(winner.sock, buffer);
+   write_client(loser.sock, buffer);
 
-   closesocket(current);
-   closesocket(opponent);
+   closesocket(winner.sock);
+   closesocket(loser.sock);
+
+   fprintf(file, "0");
+   fclose(file);
+
+   //puts(winner.name);
+   //puts(loser.name);
+   updateScores("scores", winner.name, loser.name);
 
    session->active = false;
+}
+
+void updateScores(const char *filename, const char *winnerName, const char *loserName)
+{
+   FILE *fileScores = fopen(filename, "r");
+   if (fileScores == NULL)
+   {
+      printf("Erreur à l'ouverture du fichier %s\n", filename);
+      return false;
+   }
+
+   char lines[100][256];
+   int lineCount = 0;
+   char username[256];
+   int victories, defeats;
+
+   while (fgets(lines[lineCount], sizeof(lines[lineCount]), file))
+   {
+      if (sscanf(lines[lineCount], "%[^;];%d;%d", username, &victories, &defeats) == 3)
+      {
+         if (strcmp(username, winnerName) == 0)
+         {
+            victories++;
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "%s;%d;%d\n", username, victories, defeats);
+         }
+         else if (strcmp(username, loserName) == 0)
+         {
+            defeats++;
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "%s;%d;%d\n", username, victories, defeats);
+         }
+      }
+      lineCount++;
+   }
+
+   fclose(fileScores);
+
+   file = fopen(filename, "w");
+   if (file == NULL)
+   {
+      printf("Erreur à l'ouverture du fichier %s\n", filename);
+      return;
+   }
+
+   for (int i = 0; i < lineCount; i++)
+   {
+      fputs(lines[i], file);
+   }
+
+   fclose(file);
 }
 
 int check_if_player_is_connected(Client *clients, char *name, int nb_clients)
@@ -453,29 +535,35 @@ static void app(void)
                }
                if (client->in_game && strncmp(buffer, "/chat", 5) == 0) // check if client is in game
                {
-                  strtok(buffer, " "); // ignore the command
-                  char * msg = strtok(NULL, ""); // get the message
+                  strtok(buffer, " ");          // ignore the command
+                  char *msg = strtok(NULL, ""); // get the message
                   GameSession *session = getSessionByClient(client, sessions, session_count);
-                  //ici on envoie à tous les clients de la session le message
-                  puts (session->players[0].name);
+                  // ici on envoie à tous les clients de la session le message
+                  puts(session->players[0].name);
                   puts(client->name);
-                  if (strcmp(session->players[0].name,client->name)==0){
-                      write_client(session->players[1].sock, msg);
-                  }else{
-                      write_client(session->players[0].sock, msg);
+                  if (strcmp(session->players[0].name, client->name) == 0)
+                  {
+                     write_client(session->players[1].sock, msg);
                   }
-                  for (int j = 0; j < 6; j++) //voir si faut pas faire une variable nb_spec dans gameSession
+                  else
+                  {
+                     write_client(session->players[0].sock, msg);
+                  }
+                  for (int j = 0; j < 6; j++) // voir si faut pas faire une variable nb_spec dans gameSession
                   {
                      if (session->spectators[j].sock != 0)
-                     write_client(session->spectators[j].sock, msg); 
+                        write_client(session->spectators[j].sock, msg);
                   }
                }
                else if (client->in_game)
                {
                   GameSession *session = getSessionByClient(client, sessions, session_count);
+                  // puts(session->players[session->game.current].name);
+                  // puts(&client->name);
+
                   if (session != NULL)
                   {
-                     handle_game_session(buffer, c, session);
+                     handle_game_session(buffer, c, session, client);
                   }
                   else
                   {
