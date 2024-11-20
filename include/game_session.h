@@ -5,17 +5,11 @@
 #define CHAT_BUFFER_SIZE 10
 
 typedef struct {
-    char messages[CHAT_BUFFER_SIZE][MAX_MESSAGE_LENGTH];
-    int messageCount;
-} ChatBuffer;
-
-typedef struct {
     Client players[2];
     gameState game;
-    int currentPlayer;
     bool active;
     Client spectators[6];
-    ChatBuffer chatBuffer;
+    char fileName[8];
 } GameSession;
 
 GameSession sessions[MAX_SESSIONS];  // Toutes les sessions de jeu
