@@ -533,7 +533,7 @@ static void app(void)
                   strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
                   send_message_to_all_clients(clients, *client, nb_clients, buffer, 1);
                }
-               if (client->in_game && strncmp(buffer, "/chat", 5) == 0) // check if client is in game
+               if (client->in_game && strncmp(buffer, "/chat", 5) == 0) // check command and if client is in game
                {
                   strtok(buffer, " ");          // ignore the command
                   char *msg = strtok(NULL, ""); // get the message
