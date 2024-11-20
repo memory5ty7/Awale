@@ -527,12 +527,14 @@ static void app(void)
                if (client->in_game && strncmp(buffer, "/chat", 5) == 0) // check command and if client is in game
                {
                   strtok(buffer, " ");          // ignore the command
-                  char *msg = strtok(NULL, ""); // get the message
+                  char *msg;
+                  sprintf(msg, "%s : ", client->name);
+                  strcat(msg,strtok(NULL, "")); // get the message
                   GameSession *session = getSessionByClient(client, sessions, session_count);
-                  // ici on envoie à tous les clients de la session le message
-                  puts(session->players[0].name);
-                  puts(client->name);
-                  if (strcmp(session->players[0].name, client->name) == 0)
+
+                  // ici on envoie à tous les clients de la session le message (sauf au client qui l'a envoyé)
+
+                  if (strcmp(session->players[0].sock, client->sock) == 0)
                   {
                      write_client(session->players[1].sock, msg);
                   }
@@ -540,9 +542,9 @@ static void app(void)
                   {
                      write_client(session->players[0].sock, msg);
                   }
-                  for (int j = 0; j < 6; j++) // voir si faut pas faire une variable nb_spec dans gameSession
+                  for (int j = 0; j < 6; j++) //                              voir si faut pas faire une variable nb_spec dans gameSession et pouvoir faire parler les spec
                   {
-                     if (session->spectators[j].sock != 0)
+                     if (session->spectators[j].sock != 0 && session->spectators[j].sock != client->sock)
                         write_client(session->spectators[j].sock, msg);
                   }
                }
