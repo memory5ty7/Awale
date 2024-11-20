@@ -307,9 +307,6 @@ void end_game(char *buffer, GameSession *session)
 
    fprintf(file, "0");
    fclose(file);
-
-   // puts(winner.name);
-   // puts(loser.name);
    updateScores("scores", winner.name, loser.name);
 
    session->active = false;
