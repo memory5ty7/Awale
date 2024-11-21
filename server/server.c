@@ -14,7 +14,7 @@
 /*
 Florian :
 - afficher les joueurs en ligne et pouvoir challenger qui on veut
-- ajouter une commande /quit pour quitter le serveur (pas brutalement)
++ ajouter une commande /quit pour quitter le serveur (pas brutalement)
 + pouvoir login et register sur le serv et pas en ligne de commande
 + persistance des users
 + chat in game (ajouter un statut in game aux clients puis gérer en fonction du statut vers ligne 420 et + ) --> /chat pour parler sinon considère que c'est le move
@@ -419,7 +419,7 @@ static void app(void)
    char buffer[BUF_SIZE]; // initilisation du buffer de lecture et d'écriture
 
    char userPwd[NB_USERS][NB_CHAR_PER_USERPWD]; // nb max de user connectés
-   int nbUsers = 0;         // nb de users dans la BD
+   int nbUsers = 0;                             // nb de users dans la BD
    if (!loadUsers("users", userPwd, &nbUsers))
    {
       perror("loading users failed");
@@ -532,20 +532,22 @@ static void app(void)
                   strncpy(buffer, client->name, BUF_SIZE - 1);
                   strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
                   send_message_to_all_clients(clients, *client, nb_clients, buffer, 1);
-                  //server trace
+                  // server trace
                   puts(buffer);
-               }else if (c==0 && !client->logged_in){ //client disconnected
+               }
+               else if (c == 0 && !client->logged_in)
+               { // client disconnected
                   closesocket(client->sock);
                   remove_client(clients, i, &nb_clients);
-                  //server trace
+                  // server trace
                   puts("client disconnected");
                }
                else if (!client->logged_in) // le client doit se connecter ou s'inscrire avant de pouvoir faire des actions
                {
-                  char * cmd = strtok(buffer, " "); // get command   
-                  char *username = strtok(NULL, " "); // get user name
-                  char *pwd = strtok(NULL, " ");      // get password
-                  char* checkifspace = strtok(NULL, ""); // check if there is a space after the password (space in pwd or too many arguments)
+                  char *cmd = strtok(buffer, " ");       // get command
+                  char *username = strtok(NULL, " ");    // get user name
+                  char *pwd = strtok(NULL, " ");         // get password
+                  char *checkifspace = strtok(NULL, ""); // check if there is a space after the password (space in pwd or too many arguments)
                   char userPass[NB_CHAR_PER_USERPWD];
 
                   if (username != NULL && pwd != NULL)
@@ -567,10 +569,10 @@ static void app(void)
                      }
                      else // sinon le client peut bien se connecter
                      {
+                        client->logged_in = true;
                         strcpy(client->name, username);
                         strcat(strcat(strcpy(buffer, "\n\nBonjour "), client->name), ". Vous êtes bien connecté sur Awale !\n");
                         write_client(client->sock, buffer);
-                        client->logged_in = true;
                         // server trace
                         strcpy(buffer, client->name);
                         puts(strcat(buffer, " connected"));
@@ -580,7 +582,8 @@ static void app(void)
                   {
                      if (username == NULL || pwd == NULL)
                         write_client(client->sock, "Usage : /register [username] [password]\n");
-                     else if (checkifspace != NULL){
+                     else if (checkifspace != NULL)
+                     {
                         write_client(client->sock, "Spaces are not allowed in password.\nUsage : /register [username] [password]\n");
                      }
                      else if (authentification(buffer, userPwd, nbUsers))
@@ -604,33 +607,24 @@ static void app(void)
                         puts(strcat(buffer, " registered"));
                      }
                   }
-                  else {
+                  else
+                  {
                      strcpy(buffer, "\nVeuillez rentrer une commande valide.\nVous pouvez vous connecter avec /login [username] [password]\nSi c'est la première fois que vous vous connectez, utilisez /register [username] [password]\n");
                      write_client(client->sock, buffer);
                   }
                }
-               else // sinon le client est connecté et peut faire toutes les actions
+               else //sinon le client est connecté et peut faire toutes les actions
                {
-                  GameSession *session = getSessionByClient(client, sessions, session_count);
-
-                  if (session != NULL)
-                  {
-                     // Seul le joueur actif peut effectuer un move
-                     if (strcmp(session->players[session->game.current].name, client->name) == 0)
-                        handle_game_session(buffer, c, session);
-                    
-                  //message is a command
+                  //input is a command
                   if (strncmp(buffer,"/",1)==0){
                      char *cmd = strtok(buffer, " ");
                      
-                  if (client->in_game && strncmp(buffer, "/chat", 5) == 0)
-               {
+                  if (client->in_game && strcmp(cmd, "/chat") == 0)
+                  {
                   char playerMessage[BUF_SIZE / 2];
                   char messageToSend[BUF_SIZE];
 
-                  char *token = strtok(buffer, " ");
-
-                  token = strtok(NULL, "");
+                  char *token = strtok(NULL, " ");
 
                   if (token != NULL)
                   {
@@ -642,8 +636,8 @@ static void app(void)
                   }
 
                   GameSession *session = getSessionByClient(client, sessions, session_count);
-
-                  for (int j = 0; j < 2; j++)
+                  if (session != NULL){
+                    for (int j = 0; j < 2; j++)
                   {
                      if (strcmp(session->players[j].name, client->name) != 0){
                         write_client(session->players[j].sock, messageToSend);
@@ -654,12 +648,20 @@ static void app(void)
                   {
                      if (strcmp(session->spectators[j].name, client->name) != 0){
                         write_client(session->spectators[j].sock, messageToSend);
+                  
                      }
-               }
+                  }
+                  
+                  }else{
+                           //server trace
+                           puts("Although in game, session was not found for client :");
+                           puts(client->name);
+                        }
+                  }
+                 
+               
                      else if (!client->in_game && strcmp(cmd, "/game") == 0)
                      {
-                        puts("put client to true");
-                        puts(client->name);
                         client->in_game = true;
                         waiting_clients[waiting_count++] = *client;
                         if (waiting_count == 2)
@@ -674,37 +676,94 @@ static void app(void)
                      }
                      else if (strcmp(cmd, "/msg") == 0)
                      {
-                        send_private_message(clients, *client, nb_clients, buffer, 0);
+                        send_private_message(clients, *client, nb_clients, buffer);
                      }
-                     else if (strcmp(cmd, "/help") == 0){
-                        write_client(client->sock, "\n\nListe des commandes disponibles :\n- /msg [user] [message] : envoyer un message privé\n\nIn lobby :\n- /game : lancer une partie\n\nIn game :\n- /chat [message] : envoyer un message à tous les joueurs de la partie\n");
+                     else if (strcmp(cmd, "/help") == 0)
+                     {
+                        write_client(client->sock, "\n\nListe des commandes disponibles :\n- /msg [user] [message] : envoyer un message privé\n- /quit : se déconnecter du serveur \n\nIn lobby :\n- /game : lancer une partie\n\nIn game :\n- /chat [message] : envoyer un message à tous les joueurs de la partie\n");
+                     }
+                     else if (strcmp(cmd, "/quit") == 0)
+                     {
+                        if (client->in_game)
+                        {
+                           if (!client->confirm_quit)
+                           {
+                              write_client(client->sock, "Êtes-vous sûr de vouloir vous déconnecter ?\n[ATTENTION] Vous serez considéré perdant par forfait.\n (y/n)\n");
+                              client->confirm_quit = true;
+                           }
+                        }
+                        else if (client->logged_in)
+                        {
+                           write_client(client->sock, "Exiting server...\n");
+                           closesocket(client->sock);
+                           remove_client(clients, i, &nb_clients);
+                           strncpy(buffer, client->name, BUF_SIZE - 1);
+                           strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
+                           send_message_to_all_clients(clients, *client, nb_clients, buffer, 1);
+                           // server trace
+                           puts(buffer);
+                        }
+                        else
+                        {
+                           write_client(client->sock, "Exiting server...\n");
+                           closesocket(client->sock);
+                           remove_client(clients, i, &nb_clients);
+                           // server trace
+                           puts("client disconnected");
+                        }
                      }
                      else
                      {
                         write_client(client->sock, "Commande inconnue. Tapez /help pour voir les commandes disponibles.\n");
                      }
                   }
-                  //si ce n'est pas une commande, soit le joueur fait un coup soit il parle dans le chat lobby
+                  // si ce n'est pas une commande, soit le joueur est in game et fait un coup ou confirme son /quit soit il parle dans le chat lobby
                   else if (client->in_game)
                   {
-                     GameSession *session = getSessionByClient(client, sessions, session_count);
-
-                     if (session != NULL)
+                     if (client->confirm_quit)
                      {
-                        // Seul le joueur actif peut effectuer un move
-                        if (strcmp(session->players[session->game.current].name, client->name) == 0)
-                           handle_game_session(buffer, c, session);
+                        if (strcmp(buffer, "y") == 0 || strcmp(buffer, "Y") == 0 || strcmp(buffer, "yes") == 0)
+                        {
+                           write_client(client->sock, "You have quit the game. You will be disconnected from the server.\n");
+                           closesocket(client->sock);
+                           remove_client(clients, i, &nb_clients);
+                           strncpy(buffer, client->name, BUF_SIZE - 1);
+                           strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
+                           send_message_to_all_clients(clients, *client, nb_clients, buffer, 1);
+                           // server trace
+                           puts(buffer);
+                        }
+                        else if (strcmp(buffer, "n") == 0 || strcmp(buffer, "N") == 0 || strcmp(buffer, "no") == 0)
+                        {
+                           write_client(client->sock, "/quit canceled.\nYou have decided to continue the game. \n");
+                           client->confirm_quit = false;
+                        }
                         else
-                           write_client(client->sock, "Ce n'est pas votre tour.\n/chat [message] pour parler\n");
+                        {
+                           write_client(client->sock, "Please enter y or n.\n");
+                        }
                      }
                      else
                      {
-                        puts("session not found for client :");
-                        puts(client->name);
+                        GameSession *session = getSessionByClient(client, sessions, session_count);
+
+                        if (session != NULL)
+                        {
+                           // Seul le joueur actif peut effectuer un move
+                           if (strcmp(session->players[session->game.current].name, client->name) == 0)
+                              handle_game_session(buffer, c, session);
+                           else
+                              write_client(client->sock, "Ce n'est pas votre tour.\n/chat [message] pour parler\n");
+                        }
+                        else
+                        {
+                           puts("session not found for client :");
+                           puts(client->name);
+                        }
                      }
                   }
                   // client launches game and is put on waiting list
-                  
+
                   else
                   {
                      send_message_to_all_clients(clients, *client, nb_clients, buffer, 0);
@@ -778,8 +837,8 @@ static void send_message_to_all_clients(Client *clients, Client sender, int actu
    message[0] = 0;
    for (i = 0; i < actual; i++)
    {
-      /* we don't send message to the sender */
-      if (sender.sock != clients[i].sock)
+      /* we don't send message to the sender nor to not logged in clients*/
+      if (clients[i].logged_in && sender.sock != clients[i].sock)
       {
          if (from_server == 0)
          {
@@ -792,26 +851,22 @@ static void send_message_to_all_clients(Client *clients, Client sender, int actu
    }
 }
 
-static void send_private_message(Client *clients, Client sender, int actual, const char *buffer, char from_server)
+static void send_private_message(Client *clients, Client sender, int actual, const char *buffer)
 {
    char message[BUF_SIZE];
    message[0] = 0;
 
-   strtok(buffer, " ");                // ignore the command
    char *destUser = strtok(NULL, " "); // get the user who needs to receive the message
    char *msg = strtok(NULL, "");       // get the message
+   puts(destUser);
    for (int i = 0; i < actual; i++)
    {
-      /* we only send to the destinator */
-
-      if (strcmp(clients[i].name, destUser) == 0)
+      /* we only send to the destinator and logged in players*/
+      if (clients[i].logged_in && strcmp(clients[i].name, destUser) == 0)
       {
-         if (from_server == 0)
-         {
-            strcpy(message, "[message privé de ");
-            strcat(message, sender.name);
-            strncat(message, "] : ", sizeof message - strlen(message) - 1);
-         }
+         strcpy(message, "[message privé de ");
+         strcat(message, sender.name);
+         strncat(message, "] : ", sizeof message - strlen(message) - 1);
          strcat(message, msg);
          write_client(clients[i].sock, message);
          return;
