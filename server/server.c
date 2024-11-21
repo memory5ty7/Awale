@@ -14,7 +14,7 @@
 /*
 Florian :
 - afficher les joueurs en ligne et pouvoir challenger qui on veut
-- ajouter une commande /quit pour quitter le serveur (pas brutalement)
++ ajouter une commande /quit pour quitter le serveur (pas brutalement)
 + pouvoir login et register sur le serv et pas en ligne de commande
 + persistance des users
 + chat in game (ajouter un statut in game aux clients puis gérer en fonction du statut vers ligne 420 et + ) --> /chat pour parler sinon considère que c'est le move
