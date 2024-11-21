@@ -10,6 +10,7 @@ typedef struct
    char name[BUF_SIZE];
    bool in_game;
    bool logged_in;
+   bool confirm_quit;
 }Client;
 
 #endif /* guard */
