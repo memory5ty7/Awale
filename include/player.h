@@ -24,7 +24,7 @@
 
 static void init(void);
 static void end(void);
-static void app(const char *address, const char *name, const char* pwd);
+static void app(const char *address);
 static int init_connection(const char *address);
 static void end_connection(int sock);
 static int read_server(SOCKET sock, char *buffer);

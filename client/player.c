@@ -25,17 +25,14 @@ static void end(void)
 #endif
 }
 
-static void app(const char *address, const char *name, const char *pwd)
+static void app(const char *address)
 {
    SOCKET sock = init_connection(address);
    char buffer[BUF_SIZE];
 
    fd_set rdfs;
 
-   /* send our user;pwd */
-   char userPwd[30]="";
-   strcat(strcat(strcpy(userPwd,name),";"),pwd);
-   write_server(sock, userPwd);
+   write_server(sock, "Demande de connexion");
 
    while(1)
    {
@@ -78,14 +75,10 @@ static void app(const char *address, const char *name, const char *pwd)
          /* server down */
          if(n == 0)
          {
-            printf("Server disconnected !\n");
+            printf("Disconnected from server !\n");
             break;
          }
-         if (strcmp(buffer,"Wrong user or password")==0){
-            printf("Wrong user or password\n");
-            break;
-         }
-      puts(buffer);
+         puts(buffer);
       }
    }
 
@@ -155,15 +148,15 @@ static void write_server(SOCKET sock, const char *buffer)
 
 int main(int argc, char **argv)
 {
-   if(argc < 4)
+   if(argc !=2)
    {
-      printf("Usage : %s [address] [pseudo] [mot de passe]\n", argv[0]);
+      printf("Usage : %s [address]\n", argv[0]);
       return EXIT_FAILURE;
    }
 
    init();
 
-   app(argv[1], argv[2],argv[3]);
+   app(argv[1]);
 
    end();
 

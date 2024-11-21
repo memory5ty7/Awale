@@ -9,6 +9,7 @@ typedef struct
    SOCKET sock;
    char name[BUF_SIZE];
    bool in_game;
+   bool logged_in;
 }Client;
 
 #endif /* guard */
