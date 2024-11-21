@@ -159,7 +159,7 @@ void displayBoard(char *buffer, size_t bufferSize, gameState state, int player)
     } else if (state.current==1-player&&player!=3) {
         offset += snprintf(buffer + offset, bufferSize - offset, "\nC'est à l'adversaire de jouer.\n");
     } else {
-        offset += snprintf(buffer + offset, bufferSize - offset, "Joueur 1 | Stash: %d\n|", state.stash[0]);
+        offset += snprintf(buffer + offset, bufferSize - offset, "\nJoueur 1 | Stash: %d\n", state.stash[0]);
     } 
     snprintf(buffer + offset, bufferSize - offset, "\n");
 }

@@ -168,9 +168,22 @@ static void write_client(SOCKET sock, const char *buffer)
    }
 }
 
+void spectator_join_session(char *buffer, Client *newSpectator, GameSession *session)
+{
+   session->spectators[session->nb_spectators] = *newSpectator;
+   session->nb_spectators++;
+
+   newSpectator->in_game = true;
+
+   puts("spectator in game");
+
+   displayBoard(buffer, BUF_SIZE, session->game, 3);
+   write_client(newSpectator->sock, buffer);
+}
+
 void start_game_session(char *buffer, Client player1, Client player2, int session_count, GameSession *session)
 {
-
+   session->nb_spectators = 0;
    if (session_count >= MAX_SESSIONS)
    {
       write_client(player1.sock, "Le serveur est plein.\n");
@@ -286,6 +299,14 @@ void handle_game_session(char *buffer, int len_buf, GameSession *session)
 
    displayBoard(buffer, BUF_SIZE, session->game, 1);
    write_client(session->players[1].sock, buffer);
+
+   for (int i = 0; i < session->nb_spectators; i++)
+   {
+      displayBoard(buffer, BUF_SIZE, session->game, 3);
+      write_client(session->spectators[i].sock, buffer);
+   }
+
+   // puts("done handling this turn of game session");
 }
 
 void end_game(char *buffer, GameSession *session)
@@ -377,6 +398,16 @@ GameSession *getSessionByClient(Client *client, GameSession *sessions, int sessi
       if (sessions[i].players[0].sock == client->sock || sessions[i].players[1].sock == client->sock)
       {
          return &sessions[i];
+      }
+   }
+   for (int i = 0; i < session_count; i++)
+   {
+      for (int j = 0; i < sessions[i].nb_spectators; j++)
+      {
+         if (sessions[i].spectators[j].sock == client->sock || sessions[i].spectators[j].sock == client->sock)
+         {
+            return &sessions[i];
+         }
       }
    }
    return NULL;
@@ -585,38 +616,50 @@ static void app(void)
                else //sinon le client est connecté et peut faire toutes les actions
                {
                   //input is a command
-                  if (strncmp(buffer, "/", 1) == 0)
+                  if (strncmp(buffer,"/",1)==0){
+                     char *cmd = strtok(buffer, " ");
+                     
+                  if (client->in_game && strcmp(cmd, "/chat") == 0)
                   {
-                     char *cmd = strtok(buffer, " "); //get the command
-                     puts(cmd);
-                     if (client->in_game && strcmp(cmd, "/chat") == 0)
-                     {
-                        char msg[50];
-                        sprintf(msg, "%s : ", client->name);
-                        strcat(msg, strtok(NULL, "")); //get the message
-                        GameSession *session = getSessionByClient(client, sessions, session_count);
-                        if (session != NULL){
-                           // ici on envoie à tous les clients de la session le message (sauf au client qui l'a envoyé)
-                           if (strcmp(session->players[0].sock, client->sock) == 0)
-                           {
-                              write_client(session->players[1].sock, msg);
-                           }
-                           else
-                           {
-                              write_client(session->players[0].sock, msg);
-                           }
-                           
-                           /*for (int j = 0; j < 6; j++) //                              voir si faut pas faire une variable nb_spec dans gameSession et pouvoir faire parler les spec
-                           {
-                              if (session->spectators[j].sock != 0 && session->spectators[j].sock != client->sock)
-                                 write_client(session->spectators[j].sock, msg);
-                           }*/
-                        }else{
+                  char playerMessage[BUF_SIZE / 2];
+                  char messageToSend[BUF_SIZE];
+
+                  char *token = strtok(NULL, " ");
+
+                  if (token != NULL)
+                  {
+                     strcpy(playerMessage, token);
+
+                     puts(client->name);
+                     puts(playerMessage);
+                     snprintf(messageToSend, sizeof(messageToSend), "%s: %s", client->name, playerMessage);
+                  }
+
+                  GameSession *session = getSessionByClient(client, sessions, session_count);
+                  if (session != NULL){
+                    for (int j = 0; j < 2; j++)
+                  {
+                     if (strcmp(session->players[j].name, client->name) != 0){
+                        write_client(session->players[j].sock, messageToSend);
+                     }
+                  }
+
+                  for (int j = 0; j < session->nb_spectators; j++)
+                  {
+                     if (strcmp(session->spectators[j].name, client->name) != 0){
+                        write_client(session->spectators[j].sock, messageToSend);
+                  
+                     }
+                  }
+                  
+                  }else{
                            //server trace
                            puts("Although in game, session was not found for client :");
                            puts(client->name);
                         }
-                     }
+                  }
+                 
+               
                      else if (!client->in_game && strcmp(cmd, "/game") == 0)
                      {
                         client->in_game = true;
@@ -727,6 +770,58 @@ static void app(void)
                   }
                   break;
                }
+               else if (strncmp(buffer, "/msg", 4) == 0)
+               {
+                  send_private_message(clients, *client, nb_clients, buffer, 0);
+               }
+               else if (strncmp(buffer, "/join", 5) == 0)
+               {
+                  if(client->in_game){
+                     write_client(client->sock, "Vous êtes déjà dans une partie.\n");
+                     break;
+                  }
+                  char message[BUF_SIZE];
+                  message[0] = 0;
+
+                  strtok(buffer, " ");
+                  char *destUser = strtok(NULL, "");
+                  bool found = false;
+
+                  for (int i = 0; i < nb_clients; i++)
+                  {
+                     Client clientDest = clients[i];
+                     if (strcmp(clientDest.name, destUser) == 0)
+                     {
+                        found = true;
+                        GameSession *sessionAJoindre = NULL;
+
+                        sessionAJoindre = getSessionByClient(&clientDest, sessions, session_count);
+                        if (sessionAJoindre != NULL)
+                        {
+                           spectator_join_session(buffer, client, sessionAJoindre);
+                        }
+                        else
+                        {
+                           char message[BUF_SIZE];
+
+                           strcpy(message, "");
+                           strcat(message, destUser);
+                           strcat(message, " n'est pas dans une partie actuellement.\n");
+
+                           write_client(client->sock, message);
+                        }
+                     }
+                  }
+                  if (!found)
+                  {
+                     write_client(client->sock, "L'utilisateur spécifié n'existe pas.\n");
+                  }
+               }
+               else
+               {
+                  send_message_to_all_clients(clients, *client, nb_clients, buffer, 0);
+               }
+               break;
             }
          }
       }

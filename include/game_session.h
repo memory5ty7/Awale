@@ -9,6 +9,7 @@ typedef struct {
     gameState game;
     bool active;
     Client spectators[6];
+    int nb_spectators;
     char fileName[8];
 } GameSession;
 
