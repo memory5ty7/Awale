@@ -637,6 +637,7 @@ static void app(void)
 
                   GameSession *session = getSessionByClient(client, sessions, session_count);
                   if (session != NULL){
+                           // ici on envoie à tous les clients de la session le message (sauf au client qui l'a envoyé)
                     for (int j = 0; j < 2; j++)
                   {
                      if (strcmp(session->players[j].name, client->name) != 0){
