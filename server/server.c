@@ -228,7 +228,6 @@ void start_game_session(char *buffer, Client player1, Client player2, int sessio
 
 void handle_game_session(char *buffer, int len_buf, GameSession *session)
 {
-   // puts("handle game session");
    Client *players;
    Client *current;
    Client *opponent;
@@ -237,8 +236,6 @@ void handle_game_session(char *buffer, int len_buf, GameSession *session)
    current = &players[session->game.current];
    opponent = &players[1 - session->game.current];
 
-   // puts("move of current player : ");
-   // puts(buffer);
    if (len_buf <= 0)
    {
       snprintf(buffer, BUF_SIZE, "%s a quitté la partie. Fin de la partie.\n", current->name);
@@ -289,7 +286,6 @@ void handle_game_session(char *buffer, int len_buf, GameSession *session)
 
    displayBoard(buffer, BUF_SIZE, session->game, 1);
    write_client(session->players[1].sock, buffer);
-   // puts("done handling this turn of game session");
 }
 
 void end_game(char *buffer, GameSession *session)
@@ -391,7 +387,7 @@ static void app(void)
    SOCKET sock = init_connection();
    char buffer[BUF_SIZE]; // initilisation du buffer de lecture et d'écriture
 
-   char *userPwd[NB_USERS]; // nb max de user connectés
+   char userPwd[NB_USERS][NB_CHAR_PER_USERPWD]; // nb max de user connectés
    int nbUsers = 0;         // nb de users dans la BD
    if (!loadUsers("users", userPwd, &nbUsers))
    {
@@ -455,34 +451,18 @@ static void app(void)
          SOCKADDR_IN csin = {0};
          size_t sinsize = sizeof(csin);
          int csock = accept(sock, (SOCKADDR *)&csin, &sinsize);
+         // check toutes les erreurs possibles
          if (csock == SOCKET_ERROR)
          {
             perror("accept()");
             continue;
          }
-
-         if (read_client(csock, buffer) <= 0)
+         else if (read_client(csock, buffer) <= 0)
          {
             closesocket(csock);
             continue;
          }
-
-         if (!authentification(buffer, userPwd, nbUsers))
-         {
-            write_client(csock, "Mauvais utilisateur ou mot de passe.\n");
-            closesocket(csock);
-            continue;
-         }
-
-         char *username = strtok(buffer, ";");
-
-         if (check_if_player_is_connected(clients, username, nb_clients))
-         {
-            write_client(csock, "Vous êtes déjà connecté.\n");
-            closesocket(csock);
-            continue;
-         }
-         if (nb_clients == MAX_CLIENTS)
+         else if (nb_clients == MAX_CLIENTS)
          {
             write_client(csock, "Il n'y a plus de place sur le serveur.\n");
             closesocket(csock);
@@ -495,15 +475,13 @@ static void app(void)
 
             Client new_client = {csock};
             FD_SET(csock, &rdfs);
-            strncpy(new_client.name, username, BUF_SIZE - 1);
             new_client.in_game = false;
-            strcat(strcat(strcpy(buffer, "Bonjour "), new_client.name), ". Bienvenu sur Awale! \n");
+            new_client.logged_in = false;
+            strcpy(buffer, "\n\nBonjour. Bienvenu sur Awale! \nVous pouvez vous connecter avec /login [username] [password]\nSi c'est la première fois que vous vous connectez, utilisez /register [username] [password]\n");
             write_client(csock, buffer);
 
             clients[nb_clients] = new_client;
             nb_clients++;
-            strcpy(buffer, new_client.name);
-            puts(strcat(buffer, " connected"));
          }
       }
       else
@@ -515,84 +493,175 @@ static void app(void)
             {
                Client *client = &clients[i];
                int c = read_client(client->sock, buffer);
-               /* client disconnected */
-               if (c == 0)
+               /* logged_in player disconnected */
+               if (c == 0 && client->logged_in)
                {
                   closesocket(client->sock);
                   remove_client(clients, i, &nb_clients);
                   strncpy(buffer, client->name, BUF_SIZE - 1);
                   strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
                   send_message_to_all_clients(clients, *client, nb_clients, buffer, 1);
+                  //server trace
+                  puts(buffer);
+               }else if (c==0 && !client->logged_in){ //client disconnected
+                  closesocket(client->sock);
+                  remove_client(clients, i, &nb_clients);
+                  //server trace
+                  puts("client disconnected");
                }
-               if (client->in_game && strncmp(buffer, "/chat", 5) == 0) // check command and if client is in game
+               else if (!client->logged_in) // le client doit se connecter ou s'inscrire avant de pouvoir faire des actions
                {
-                  strtok(buffer, " ");          // ignore the command
-                  char *msg;
-                  sprintf(msg, "%s : ", client->name);
-                  strcat(msg,strtok(NULL, "")); // get the message
-                  GameSession *session = getSessionByClient(client, sessions, session_count);
+                  char * cmd = strtok(buffer, " "); // get command   
+                  char *username = strtok(NULL, " "); // get user name
+                  char *pwd = strtok(NULL, " ");      // get password
+                  char* checkifspace = strtok(NULL, ""); // check if there is a space after the password (space in pwd or too many arguments)
+                  char userPass[NB_CHAR_PER_USERPWD];
 
-                  // ici on envoie à tous les clients de la session le message (sauf au client qui l'a envoyé)
-
-                  if (strcmp(session->players[0].sock, client->sock) == 0)
+                  if (username != NULL && pwd != NULL)
+                     strcat(strcat(strcpy(userPass, username), ";"), pwd);
+                  if (strcmp(cmd, "/login") == 0)
                   {
-                     write_client(session->players[1].sock, msg);
+                     if (username == NULL || pwd == NULL)
+                        write_client(client->sock, "Too few arguments.\nUsage : /login [username] [password]\n");
+                     else if (checkifspace != NULL)
+                        write_client(client->sock, "Too many arguments.\nUsage : /login [username] [password]\n");
+                     else if (!authentification(userPass, userPwd, nbUsers))
+                     {
+                        write_client(client->sock, "Mauvais utilisateur ou mot de passe.\n");
+                     }
+                     else if (check_if_player_is_connected(clients, username, nb_clients))
+                     {
+                        write_client(client->sock, "Vous êtes déjà connecté.\n");
+                        closesocket(client->sock);
+                     }
+                     else // sinon le client peut bien se connecter
+                     {
+                        strcpy(client->name, username);
+                        strcat(strcat(strcpy(buffer, "\n\nBonjour "), client->name), ". Vous êtes bien connecté sur Awale !\n");
+                        write_client(client->sock, buffer);
+                        client->logged_in = true;
+                        // server trace
+                        strcpy(buffer, client->name);
+                        puts(strcat(buffer, " connected"));
+                     }
                   }
-                  else
+                  else if (strcmp(cmd, "/register") == 0)
                   {
-                     write_client(session->players[0].sock, msg);
-                  }
-                  for (int j = 0; j < 6; j++) //                              voir si faut pas faire une variable nb_spec dans gameSession et pouvoir faire parler les spec
-                  {
-                     if (session->spectators[j].sock != 0 && session->spectators[j].sock != client->sock)
-                        write_client(session->spectators[j].sock, msg);
-                  }
-               }
-               else if (client->in_game)
-               {
-                  GameSession *session = getSessionByClient(client, sessions, session_count);
-                  
-
-                  if (session != NULL)
-                  {
-                     // Seul le joueur actif peut effectuer un move
-                     if (strcmp(session->players[session->game.current].name, client->name) == 0)
-                        handle_game_session(buffer, c, session);
+                     if (username == NULL || pwd == NULL)
+                        write_client(client->sock, "Usage : /register [username] [password]\n");
+                     else if (checkifspace != NULL){
+                        write_client(client->sock, "Spaces are not allowed in password.\nUsage : /register [username] [password]\n");
+                     }
+                     else if (authentification(buffer, userPwd, nbUsers))
+                     {
+                        write_client(client->sock, "Cet utilisateur existe déjà.\nVeuillez-vous connecter avec /login\n");
+                     }
                      else
-                        write_client(client->sock, "Ce n'est pas votre tour.\n/chat [message] pour parler\n");
+                     {
+                        file = fopen("users", "a");
+                        if (file == NULL)
+                        {
+                           printf("Erreur à l'ouverture du fichier %s\n", "users");
+                           return false;
+                        }
+                        fprintf(file, "%s;%s\n", username, pwd);
+                        fclose(file);
+                        strcat(strcat(strcpy(buffer, "\n\nBonjour "), client->name), ". Vous êtes bien inscrit sur Awale !\nVous pouvez maintenant vous connecter avec /login\n");
+                        write_client(client->sock, buffer);
+                        // server trace
+                        strcpy(buffer, client->name);
+                        puts(strcat(buffer, " registered"));
+                     }
                   }
+                  else {
+                     strcpy(buffer, "\nVeuillez rentrer une commande valide.\nVous pouvez vous connecter avec /login [username] [password]\nSi c'est la première fois que vous vous connectez, utilisez /register [username] [password]\n");
+                     write_client(client->sock, buffer);
+                  }
+               }
+               else // sinon le client est connecté et peut faire toutes les actions
+               {
+                  //message is a command
+                  if (strncmp(buffer,"/",1)==0){
+                     char *cmd = strtok(buffer, " ");
+                     
+                     if (client->in_game && strcmp(cmd, "/chat") == 0)
+                     {
+                        char *msg;
+                        sprintf(msg, "%s : ", client->name);
+                        strcat(msg, strtok(NULL, "")); // get the message
+                        GameSession *session = getSessionByClient(client, sessions, session_count);
+
+                        // ici on envoie à tous les clients de la session le message (sauf au client qui l'a envoyé)
+
+                        if (strcmp(session->players[0].sock, client->sock) == 0)
+                        {
+                           write_client(session->players[1].sock, msg);
+                        }
+                        else
+                        {
+                           write_client(session->players[0].sock, msg);
+                        }
+                        for (int j = 0; j < 6; j++) //                              voir si faut pas faire une variable nb_spec dans gameSession et pouvoir faire parler les spec
+                        {
+                           if (session->spectators[j].sock != 0 && session->spectators[j].sock != client->sock)
+                              write_client(session->spectators[j].sock, msg);
+                        }
+                     }
+                     else if (!client->in_game && strcmp(cmd, "/game") == 0)
+                     {
+                        puts("put client to true");
+                        puts(client->name);
+                        client->in_game = true;
+                        waiting_clients[waiting_count++] = *client;
+                        if (waiting_count == 2)
+                        {
+                           start_game_session(buffer, waiting_clients[0], waiting_clients[1], session_count, &sessions[session_count++]);
+                           waiting_count = 0;
+                        }
+                        else
+                        {
+                           write_client(client->sock, "En attente d'un adversaire...\n");
+                        }
+                     }
+                     else if (strcmp(cmd, "/msg") == 0)
+                     {
+                        send_private_message(clients, *client, nb_clients, buffer, 0);
+                     }
+                     else if (strcmp(cmd, "/help") == 0){
+                        write_client(client->sock, "\n\nListe des commandes disponibles :\n- /msg [user] [message] : envoyer un message privé\n\nIn lobby :\n- /game : lancer une partie\n\nIn game :\n- /chat [message] : envoyer un message à tous les joueurs de la partie\n");
+                     }
+                     else
+                     {
+                        write_client(client->sock, "Commande inconnue. Tapez /help pour voir les commandes disponibles.\n");
+                     }
+                  }
+                  //si ce n'est pas une commande, soit le joueur fait un coup soit il parle dans le chat lobby
+                  else if (client->in_game)
+                  {
+                     GameSession *session = getSessionByClient(client, sessions, session_count);
+
+                     if (session != NULL)
+                     {
+                        // Seul le joueur actif peut effectuer un move
+                        if (strcmp(session->players[session->game.current].name, client->name) == 0)
+                           handle_game_session(buffer, c, session);
+                        else
+                           write_client(client->sock, "Ce n'est pas votre tour.\n/chat [message] pour parler\n");
+                     }
+                     else
+                     {
+                        puts("session not found for client :");
+                        puts(client->name);
+                     }
+                  }
+                  // client launches game and is put on waiting list
+                  
                   else
                   {
-                     puts("session not found for client :");
-                     puts(client->name);
+                     send_message_to_all_clients(clients, *client, nb_clients, buffer, 0);
                   }
+                  break;
                }
-               // client launches game and is put on waiting list
-               else if (strncmp(buffer, "/game", 5) == 0)
-               {
-                  puts("put client to true");
-                  puts(client->name);
-                  client->in_game = true;
-                  waiting_clients[waiting_count++] = *client;
-                  if (waiting_count == 2)
-                  {
-                     start_game_session(buffer, waiting_clients[0], waiting_clients[1], session_count, &sessions[session_count++]);
-                     waiting_count = 0;
-                  }
-                  else
-                  {
-                     write_client(client->sock, "En attente d'un adversaire...\n");
-                  }
-               }
-               else if (strncmp(buffer, "/msg", 4) == 0)
-               {
-                  send_private_message(clients, *client, nb_clients, buffer, 0);
-               }
-               else
-               {
-                  send_message_to_all_clients(clients, *client, nb_clients, buffer, 0);
-               }
-               break;
             }
          }
       }
