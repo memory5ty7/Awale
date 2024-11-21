@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <signal.h>
 #include <time.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 #include "../include/server.h"
 #include "../include/game_session.h"
@@ -542,7 +544,7 @@ static void app(void)
             FD_SET(csock, &rdfs);
             new_client.in_game = false;
             new_client.logged_in = false;
-            strcpy(buffer, "\n\nBonjour. Bienvenu sur Awale! \nVous pouvez vous connecter avec /login [username] [password]\nSi c'est la première fois que vous vous connectez, utilisez /register [username] [password]\n");
+            strcpy(buffer, "\n\nBonjour. Bienvenue sur Awale! \nVous pouvez vous connecter avec /login [username] [password]\nSi c'est la première fois que vous vous connectez, utilisez /register [username] [password]\n");
             write_client(csock, buffer);
 
             clients[nb_clients] = new_client;
@@ -716,7 +718,10 @@ static void app(void)
                            write_client(client->sock, "En attente d'un adversaire...\n");
                         }
                      }
-
+                     else if (strcmp(cmd, "/showgames") == 0)
+                     {
+                        show_games(clients, *client);
+                     }
                      else if (strcmp(cmd, "/join") == 0)
                      {
                         if (client->in_game)
@@ -776,8 +781,7 @@ static void app(void)
                      }
                      else if (strcmp(cmd, "/help") == 0)
                      {
-
-                        write_client(client->sock, "\n\nListe des commandes disponibles :\n- /msg [user] [message] : envoyer un message privé\n- /quit : se déconnecter du serveur \n\nIn lobby :\n- /game : lancer une partie\n- /join [username] : rejoindre la gameroom d'un joueur pour assister à la partie\n- /showusers : affiche la liste des utilisateurs connectés ainsi que leur statut\n\nIn game :\n- /chat [message] : envoyer un message à tous les joueurs de la partie\n");
+                        write_client(client->sock, "\n\nListe des commandes disponibles :\n- /msg [user] [message] : envoyer un message privé\n- /quit : se déconnecter du serveur \n\nIn lobby :\n- /game : lancer une partie\n- /join [username] : rejoindre la gameroom d'un joueur pour assister à la partie\n- /showusers : affiche la liste des utilisateurs connectés ainsi que leur statut\n- /showgames : affiche la liste des parties terminées\n\nIn game :\n- /chat [message] : envoyer un message à tous les joueurs de la partie\n");
                      }
                      else if (strcmp(cmd, "/quit") == 0)
                      {
@@ -874,6 +878,99 @@ static void app(void)
 }
 
 static void end_connection(int sock) { closesocket(sock); }
+
+void show_games(Client *clients, Client client)
+{
+   const char *folderPath = "games";     // Path to the folder
+   struct dirent *entry;                 // Pointer for directory entry
+   DIR *directory = opendir(folderPath); // Open the directory
+
+   if (directory == NULL)
+   {
+      perror("Unable to open directory");
+      return;
+   }
+
+   char message[BUF_SIZE];
+
+   // Initialize the output buffer
+   message[0] = '\0';
+
+   strcat(message, "Liste des parties :\n");
+
+   // Read and process all files in the folder
+   while ((entry = readdir(directory)) != NULL)
+   {
+      char *filename = entry->d_name;
+
+      // Build the full path to the file
+      char filepath[512];
+      snprintf(filepath, sizeof(filepath), "%s/%s", folderPath, filename);
+
+      // Use stat to check if it is a regular file
+      struct stat fileStat;
+      if (stat(filepath, &fileStat) == -1 || !S_ISREG(fileStat.st_mode))
+      {
+         continue;
+      }
+
+      // Open the file
+      FILE *file = fopen(filepath, "r");
+      if (file == NULL)
+      {
+         perror("Error opening file");
+         continue;
+      }
+
+      // Check if the file is not empty
+      if (fileStat.st_size > 0)
+      {
+         // Read the last character of the file
+         fseek(file, -1, SEEK_END);
+         char lastChar = fgetc(file);
+
+         if (lastChar == '0')
+         {
+            // Go back to the beginning of the file
+            rewind(file);
+
+            // Read the first line
+            char line[BUF_SIZE];
+            if (fgets(line, sizeof(line), file))
+            {
+               char filestr[BUF_SIZE];
+               // Extract the first word before ';'
+               char *player1 = strtok(line, ";");
+               puts(player1);
+               char *player2 = strtok(NULL, ";");
+               puts(player2);
+               sanitizeFilename(filename);
+               sprintf(filestr, "- %s : %s VS. %s\n", filename, player1, player2);
+               strcat(message, filestr);
+            }
+         }
+      }
+
+      fclose(file); // Close the file
+   }
+
+   closedir(directory); // Close the directory
+
+   write_client(client.sock, message);
+}
+
+void sanitizeFilename(char *filename)
+{
+   size_t len = strlen(filename);
+   for (size_t i = 0; i < len; i++)
+   {
+      if (filename[i] == '\n' || filename[i] == '\r')
+      {
+         filename[i] = '\0'; // Replace newline or carriage return with null terminator
+         break;
+      }
+   }
+}
 
 void show_users(Client *clients, Client sender, int nb_clients, GameSession *sessions, int session_count, const char *buffer)
 {
