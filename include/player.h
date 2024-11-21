@@ -1,5 +1,5 @@
-#ifndef CLIENT_H
-#define CLIENT_H
+#ifndef PLAYER_H
+#define PLAYER_H
 
 #ifdef WIN32
 

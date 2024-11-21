@@ -1,8 +1,13 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
-#include "server.h"
+#include <stdio.h>
+#include <stdbool.h>
+
 #include "network.h"
+#include "constants.h"
+
+#define BUF_SIZE    1024
 
 typedef struct
 {
