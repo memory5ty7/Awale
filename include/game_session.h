@@ -5,10 +5,10 @@
 #define CHAT_BUFFER_SIZE 10
 
 typedef struct {
-    Client players[2];
     gameState game;
-    bool active;
+    Client players[2];
     Client spectators[6];
+    bool active;
     int nb_spectators;
     char fileName[8];
 } GameSession;
