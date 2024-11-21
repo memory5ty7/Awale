@@ -12,6 +12,8 @@
 #define NB_USERS 10
 #define NB_CHAR_PER_USERPWD 30
 /*
+A debbuger : quand un joueur disconnecte ça envoie le message "... disconnected" 1 fois au 1er client puis 2 fois au deuxième etc.   
+
 Florian :
 - afficher les joueurs en ligne et pouvoir challenger qui on veut
 + ajouter une commande /quit pour quitter le serveur (pas brutalement)
@@ -138,11 +140,6 @@ static int init_connection(void)
    return sock;
 }
 
-static void end_connection(int sock)
-{
-   closesocket(sock);
-}
-
 static int read_client(SOCKET sock, char *buffer)
 {
    int n = 0;
@@ -188,8 +185,6 @@ void start_game_session(char *buffer, Client player1, Client player2, int sessio
    {
       write_client(player1.sock, "Le serveur est plein.\n");
       write_client(player2.sock, "Le serveur est plein.\n");
-      closesocket(player1.sock);
-      closesocket(player2.sock);
       return;
    }
 
@@ -252,7 +247,7 @@ void handle_game_session(char *buffer, int len_buf, GameSession *session, Client
    if (len_buf <= 0)
    {
       snprintf(buffer, BUF_SIZE, "%s a quitté la partie. Fin de la partie.\n", current->name);
-      
+
       for(int i=0;i<session->nb_spectators;i++){
          write_client(session->spectators[i].sock, buffer);
          session->spectators[i].in_game = false;
@@ -261,6 +256,8 @@ void handle_game_session(char *buffer, int len_buf, GameSession *session, Client
       write_client(opponent->sock, buffer);
       session->players[0].in_game = false;
       session->players[1].in_game = false;
+
+      closesocket(current->sock); //si on ferme le socket faut aussi remove le client de la liste des clients
 
       fprintf(file, "0");
       fclose(file);
@@ -419,12 +416,9 @@ GameSession *getSessionByClient(Client *client, GameSession *sessions, int sessi
       {
          return &sessions[i];
       }
-   }
-   for (int i = 0; i < session_count; i++)
-   {
-      for (int j = 0; i < sessions[i].nb_spectators; j++)
+      for (int j = 0; j < sessions[i].nb_spectators; j++)
       {
-         if (sessions[i].spectators[j].sock == client->sock || sessions[i].spectators[j].sock == client->sock)
+         if (sessions[i].spectators[j].sock == client->sock)
          {
             return &sessions[i];
          }
@@ -432,6 +426,21 @@ GameSession *getSessionByClient(Client *client, GameSession *sessions, int sessi
    }
    return NULL;
 }
+
+bool isSpectator(Client *client, GameSession *session){
+   if (session !=NULL)
+   {
+      for (int j = 0; j < session->nb_spectators; j++)
+      {
+         if (sessions->spectators[j].sock == client->sock)
+         {
+            return true;
+         }
+      }
+   }
+   return false;
+}
+
 
 static void app(void)
 {
@@ -586,6 +595,9 @@ static void app(void)
                      {
                         write_client(client->sock, "Vous êtes déjà connecté.\n");
                         closesocket(client->sock);
+                        remove_client(clients, i, &nb_clients);
+                        // server trace
+                        puts("client disconnected");
                      }
                      else // sinon le client peut bien se connecter
                      {
@@ -643,6 +655,7 @@ static void app(void)
                      if (client->in_game && strcmp(cmd, "/chat") == 0)
                      {
                         char playerMessage[BUF_SIZE];
+                       
                         char messageToSend[BUF_SIZE];
 
                         char *token = strtok(NULL, "");
@@ -651,8 +664,6 @@ static void app(void)
                         {
                            strcpy(playerMessage, token);
 
-                           puts(client->name);
-                           puts(playerMessage);
                            snprintf(messageToSend, sizeof(messageToSend), "%s: %s", client->name, playerMessage);
                         }
 
@@ -678,7 +689,9 @@ static void app(void)
                         }
                         else
                         {
+
                            // server trace
+
                            puts("Although in game, session was not found for client :");
                            puts(client->name);
                         }
@@ -699,35 +712,28 @@ static void app(void)
                         }
                      }
 
-                     else if (strncmp(buffer, "/join", 5) == 0)
+                     else if (strcmp(cmd, "/join") == 0)
                      {
                         if (client->in_game)
+
                         {
                            write_client(client->sock, "Vous êtes déjà dans une partie.\n");
                            break;
                         }
 
-                        char* destUser = strtok(NULL,"");
-
-                        //char destUser[BUF_SIZE];
-                        
-                        //strncpy(destUser,token,BUF_SIZE-1);
-
+                        char *destUser = strtok(NULL, "");
                         bool found = false;
-
                         
+                        if (destUser ==NULL)
+                           write_client(client->sock, "\nToo few arguments.\nUsage : /join [username]\n");
+                        else if (strcmp(destUser,client->name)==0)
+                           write_client(client->sock, "Vous ne pouvez pas vous rejoindre vous-même...\nUsage : /join [username (other than yours -_-)]\n");
+                        else {
                         for (int i = 0; i < nb_clients; i++)
                         {
-                           
-                           puts("before");
-                           
                            Client clientDest = clients[i];
-                           puts(clients[i].name);
-                           puts(destUser);
-                           
                            if (strcmp(clientDest.name, destUser) == 0)
                            {
-                              puts("after");
                               found = true;
                               GameSession *sessionAJoindre = NULL;
 
@@ -760,17 +766,17 @@ static void app(void)
                      }
                      else if (strcmp(cmd, "/help") == 0)
                      {
-                        write_client(client->sock, "\n\nListe des commandes disponibles :\n- /msg [user] [message] : envoyer un message privé\n- /join [user] : devenir spectateur de la partie d'un utilisateur\n- /quit : se déconnecter du serveur \n\nIn lobby :\n- /game : lancer une partie\n\nIn game :\n- /chat [message] : envoyer un message à tous les joueurs de la partie\n");
+
+                        write_client(client->sock, "\n\nListe des commandes disponibles :\n- /msg [user] [message] : envoyer un message privé\n- /quit : se déconnecter du serveur \n\nIn lobby :\n- /game : lancer une partie\n- /join [username] : rejoindre la gameroom d'un joueur pour assister à la partie\n\nIn game :\n- /chat [message] : envoyer un message à tous les joueurs de la partie\n");
                      }
                      else if (strcmp(cmd, "/quit") == 0)
                      {
-                        if (client->in_game)
+                        if (client->in_game && !isSpectator(client, getSessionByClient(client, sessions, session_count))) //on met le warning uniquement si c'est un joueur actif
                         {
-                           if (!client->confirm_quit)
-                           {
-                              write_client(client->sock, "Êtes-vous sûr de vouloir vous déconnecter ?\n[ATTENTION] Vous serez considéré perdant par forfait.\n (y/n)\n");
-                              client->confirm_quit = true;
-                           }
+                           if (isSpectator(client, getSessionByClient(client, sessions, session_count)))
+                              puts("spectator is true");
+                           write_client(client->sock, "Êtes-vous sûr de vouloir vous déconnecter ?\n[ATTENTION] Vous serez considéré perdant par forfait.\n (y/n)\n");
+                           client->confirm_quit = true;
                         }
                         else if (client->logged_in)
                         {
@@ -857,6 +863,7 @@ static void app(void)
    end_connection(sock);
 }
 
+static void end_connection(int sock){closesocket(sock);} 
 static void send_message_to_all_clients(Client *clients, Client sender, int actual, const char *buffer, char from_server)
 {
    int i = 0;
