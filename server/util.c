@@ -33,19 +33,19 @@ int getClientID(ServerState serverState, char *name)
    return -1;
 }
 
-GameSession *getSessionByClient(ServerState serverState, Client *client)
+GameSession *getSessionByClient(ServerState *serverState, Client *client)
 {
-   for (int i = 0; i < serverState.session_count; i++)
+   for (int i = 0; i < serverState->session_count; i++)
    {
-      if (serverState.sessions[i].players[0].sock == client->sock || serverState.sessions[i].players[1].sock == client->sock)
+      if (serverState->sessions[i].players[0]->sock == client->sock || serverState->sessions[i].players[1]->sock == client->sock)
       {
-         return &serverState.sessions[i];
+         return &serverState->sessions[i];
       }
-      for (int j = 0; j < serverState.sessions[i].nb_spectators; j++)
+      for (int j = 0; j < serverState->sessions[i].nb_spectators; j++)
       {
-         if (serverState.sessions[i].spectators[j].sock == client->sock)
+         if (serverState->sessions[i].spectators[j]->sock == client->sock)
          {
-            return &serverState.sessions[i];
+            return &serverState->sessions[i];
          }
       }
    }
@@ -58,7 +58,7 @@ bool isSpectator(Client *client, GameSession *session)
    {
       for (int j = 0; j < session->nb_spectators; j++)
       {
-         if (strcmp(session->spectators[j].name, client->name) == 0)
+         if (strcmp(session->spectators[j]->name, client->name) == 0)
          {
             return true;
          }
@@ -67,17 +67,17 @@ bool isSpectator(Client *client, GameSession *session)
    return false;
 }
 
-int check_if_player_is_connected(ServerState serverState, char *name)
+bool check_if_player_is_connected(ServerState serverState, char *name)
 {
 
    for (int i = 0; i < serverState.nb_clients; i++)
    {
       if (strcmp(serverState.clients[i].name, name) == 0 && serverState.clients[i].logged_in)
       {
-         return 1; // Player found
+         return true; // Player found
       }
    }
-   return 0; // Player not found
+   return false; // Player not found
 }
 
 bool authentification(char *userpassword, ServerState serverState)
@@ -132,8 +132,8 @@ void send_message_to_all_clients(ServerState serverState, Client sender, const c
    message[0] = 0;
    for (i = 0; i < serverState.nb_clients; i++)
    {
-      /* we don't send message to the sender nor to not logged in clients*/
-      if (serverState.clients[i].logged_in && sender.sock != serverState.clients[i].sock)
+      /* we don't send message to the sender nor to Clients in game nor to not logged in clients */
+      if (serverState.clients[i].logged_in && sender.sock != serverState.clients[i].sock && !serverState.clients[i].in_game)
       {
          if (from_server == 0)
          {

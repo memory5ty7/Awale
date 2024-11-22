@@ -57,7 +57,7 @@ void updateScores(const char *filename, const char *winnerName, const char *lose
    fclose(fileScores);
 }
 
-bool loadUsers(char *filename, ServerState* serverState)
+bool loadUsers(char *filename, ServerState *serverState)
 {
    FILE *fptr = fopen(filename, "r");
 
@@ -66,7 +66,6 @@ bool loadUsers(char *filename, ServerState* serverState)
       printf("Erreur à l'ouverture du fichier %s\n", filename);
       return false;
    }
-
    serverState->nbUsers = 0;
 
    char line[NB_CHAR_PER_USERPWD];

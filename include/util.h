@@ -6,9 +6,9 @@
 
 void sanitizeFilename(char *);
 int getClientID(ServerState, char *);
-GameSession *getSessionByClient(ServerState, Client *);
+GameSession *getSessionByClient(ServerState*, Client *);
 bool isSpectator(Client *, GameSession *);
-int check_if_player_is_connected(ServerState, char *);
+bool check_if_player_is_connected(ServerState, char *);
 bool authentification(char *userpassword, ServerState serverState);
 
 void clear_clients(Client *, int);
