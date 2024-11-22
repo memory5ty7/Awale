@@ -20,6 +20,11 @@ void cmd_chat(ServerState *serverState, Client *client, char *buffer)
         strcpy(playerMessage, token);
         snprintf(messageToSend, sizeof(messageToSend), "%s: %s", client->name, playerMessage);
     }
+    else 
+    {
+        write_client(client->sock, "\nToo few arguments.\nUsage : /chat [message]\n");
+        return;
+    }
 
     GameSession *session = getSessionByClient(serverState, client);
     if (session != NULL)
@@ -302,7 +307,7 @@ void cmd_msg(ServerState *serverState, Client *client, const char *buffer, int s
     char *destUser = strtok(NULL, " "); // get the user who needs to receive the message
     char *msg = strtok(NULL, "");       // get the message
 
-    if (destUser == NULL)
+    if (destUser == NULL || msg == NULL)
     {
         write_client(client->sock, "\nToo few arguments.\nUsage : /msg [username] [message]\n");
         return;

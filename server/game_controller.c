@@ -53,7 +53,7 @@ void start_game_session(ServerState *serverState, char *buffer, Client *player1,
    snprintf(msg, sizeof(msg), "La partie contre %s commence !\n", player1->name);
    write_client(player2->sock, msg);
 
-   checkMove(&(session->game), session->game.current);
+   checkMove(&session->game, session->game.current);
 
    displayBoard(buffer, BUF_SIZE, session->game, 0);
    write_client(session->players[0]->sock, buffer);
@@ -66,12 +66,11 @@ void start_game_session(ServerState *serverState, char *buffer, Client *player1,
 
 void handle_game_session(ServerState *serverState, char *buffer, int len_buf, GameSession *session)
 {
-   Client **players;
    Client *current;
    Client *opponent;
 
-   current = players[session->game.current];
-   opponent = players[1 - session->game.current];
+   current = session->players[session->game.current];
+   opponent = session->players[1 - session->game.current];
 
    if (len_buf <= 0)
    {
@@ -101,13 +100,13 @@ void handle_game_session(ServerState *serverState, char *buffer, int len_buf, Ga
 
    if (choice < 1 || choice > 6 || !session->game.movesAllowed[choice - 1])
    {
-      write_client(current->sock, "Choix incorrect. Veuillez réessayer.\n");
+      write_client(current->sock, "Choix incorrect. Veuillez réessayer.\n/chat [message] pour parler\n");
       return;
    }
 
    if (!doMove(&(session->game), choice, session->game.current))
    {
-      write_client(current->sock, "Choix incorrect. Veuillez réessayer.\n");
+      write_client(current->sock, "Choix incorrect. Veuillez réessayer.\n/chat [message] pour parler\n");
       return;
    }
 
@@ -121,7 +120,7 @@ void handle_game_session(ServerState *serverState, char *buffer, int len_buf, Ga
 
    session->game.current = 1 - session->game.current;
 
-   if (checkMove(&(session->game), session->game.current))
+   if (checkMove(&session->game, session->game.current))
    {
       end_game(buffer, session);
       return;
