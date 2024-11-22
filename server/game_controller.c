@@ -8,16 +8,16 @@
 
 #include "../include/server_state.h"
 
-void start_game_session(ServerState* serverState, char *buffer, Client player1, Client player2, GameSession *session, int state)
+void start_game_session(ServerState *serverState, char *buffer, Client *player1, Client *player2, GameSession *session, int state)
 {
-   session->nb_spectators = 0;
    if (serverState->session_count >= MAX_SESSIONS)
    {
-      write_client(player1.sock, "Le serveur est plein.\n");
-      write_client(player2.sock, "Le serveur est plein.\n");
+      write_client(player1->sock, "Le serveur est plein.\n");
+      write_client(player2->sock, "Le serveur est plein.\n");
       return;
    }
-
+   serverState->session_count++;
+   session->nb_spectators = 0;
    session->players[0] = player1;
    session->players[1] = player2;
    session->game = initGame(1);
@@ -35,8 +35,8 @@ void start_game_session(ServerState* serverState, char *buffer, Client player1, 
    strcat(foldername, filename);
    sprintf(filename, foldername);
    strcpy(session->fileName, filename);
-   write_client(player1.sock, session->fileName);
-   write_client(player2.sock, session->fileName);
+   write_client(player1->sock, session->fileName);
+   write_client(player2->sock, session->fileName);
 
    session->file = fopen(filename, "w+");
    if (session->file == NULL)
@@ -47,32 +47,31 @@ void start_game_session(ServerState* serverState, char *buffer, Client player1, 
 
    char msg[1024];
 
-   snprintf(msg, sizeof(msg), "La partie contre %s commence !\n", player2.name);
-   write_client(player1.sock, msg);
+   snprintf(msg, sizeof(msg), "La partie contre %s commence !\n", player2->name);
+   write_client(player1->sock, msg);
 
-   snprintf(msg, sizeof(msg), "La partie contre %s commence !\n", player1.name);
-   write_client(player2.sock, msg);
+   snprintf(msg, sizeof(msg), "La partie contre %s commence !\n", player1->name);
+   write_client(player2->sock, msg);
 
    checkMove(&(session->game), session->game.current);
 
    displayBoard(buffer, BUF_SIZE, session->game, 0);
-   write_client(session->players[0].sock, buffer);
+   write_client(session->players[0]->sock, buffer);
 
    displayBoard(buffer, BUF_SIZE, session->game, 1);
-   write_client(session->players[1].sock, buffer);
+   write_client(session->players[1]->sock, buffer);
 
-   fprintf(session->file, "%s;%s;", player1.name, player2.name);
+   fprintf(session->file, "%s;%s;", player1->name, player2->name);
 }
 
-void handle_game_session(ServerState serverState, char *buffer, int len_buf, GameSession *session)
+void handle_game_session(ServerState *serverState, char *buffer, int len_buf, GameSession *session)
 {
-   Client *players;
+   Client **players;
    Client *current;
    Client *opponent;
 
-   players = session->players;
-   current = &players[session->game.current];
-   opponent = &players[1 - session->game.current];
+   current = players[session->game.current];
+   opponent = players[1 - session->game.current];
 
    if (len_buf <= 0)
    {
@@ -80,22 +79,20 @@ void handle_game_session(ServerState serverState, char *buffer, int len_buf, Gam
 
       for (int i = 0; i < session->nb_spectators; i++)
       {
-         write_client(session->spectators[i].sock, buffer);
-         session->spectators[i].in_game = false;
+         write_client(session->spectators[i]->sock, buffer);
+         session->spectators[i]->in_game = false;
       }
 
       write_client(opponent->sock, buffer);
-      session->players[0].in_game = false;
-      session->players[1].in_game = false;
-
-      closesocket(current->sock); // si on ferme le socket faut aussi remove le client de la liste des clients
+      session->players[0]->in_game = false;
+      session->players[1]->in_game = false;
 
       fprintf(session->file, "0");
       fclose(session->file);
       session->active = false;
 
       closesocket(current->sock);
-      remove_client(&serverState, current);
+      remove_client(serverState, current);
       return;
    }
    buffer[len_buf] = '\0';
@@ -131,15 +128,15 @@ void handle_game_session(ServerState serverState, char *buffer, int len_buf, Gam
    }
 
    displayBoard(buffer, BUF_SIZE, session->game, 0);
-   write_client(session->players[0].sock, buffer);
+   write_client(session->players[0]->sock, buffer);
 
    displayBoard(buffer, BUF_SIZE, session->game, 1);
-   write_client(session->players[1].sock, buffer);
+   write_client(session->players[1]->sock, buffer);
 
    for (int i = 0; i < session->nb_spectators; i++)
    {
       displayBoard(buffer, BUF_SIZE, session->game, 3);
-      write_client(session->spectators[i].sock, buffer);
+      write_client(session->spectators[i]->sock, buffer);
    }
 
    // puts("done handling this turn of game session");
@@ -147,24 +144,24 @@ void handle_game_session(ServerState serverState, char *buffer, int len_buf, Gam
 
 void end_game(char *buffer, GameSession *session)
 {
-   Client winner = (session->game.stash[0] > session->game.stash[1]) ? session->players[0] : session->players[1];
-   Client loser = (session->game.stash[0] > session->game.stash[1]) ? session->players[1] : session->players[0];
+   Client* winner = (session->game.stash[0] > session->game.stash[1]) ? session->players[0] : session->players[1];
+   Client* loser = (session->game.stash[0] > session->game.stash[1]) ? session->players[1] : session->players[0];
 
-   snprintf(buffer, BUF_SIZE, "La partie est terminée! %s a gagné!\n", winner.name);
+   snprintf(buffer, BUF_SIZE, "La partie est terminée! %s a gagné!\n", winner->name);
 
-   write_client(winner.sock, buffer);
-   write_client(loser.sock, buffer);
+   write_client(winner->sock, buffer);
+   write_client(loser->sock, buffer);
 
    fprintf(session->file, "0");
    fclose(session->file);
-   updateScores("scores", winner.name, loser.name);
+   updateScores("scores", winner->name, loser->name);
 
-   session->players[0].in_game = false;
-   session->players[1].in_game = false;
+   session->players[0]->in_game = false;
+   session->players[1]->in_game = false;
 
    for (int i = 0; i < session->nb_spectators; i++)
    {
-      session->spectators[i].in_game = false;
+      session->spectators[i]->in_game = false;
    }
 
    session->active = false;
@@ -172,7 +169,7 @@ void end_game(char *buffer, GameSession *session)
 
 void spectator_join_session(char *buffer, Client *newSpectator, GameSession *session)
 {
-   session->spectators[session->nb_spectators] = *newSpectator;
+   session->spectators[session->nb_spectators] = newSpectator;
    session->nb_spectators++;
 
    newSpectator->in_game = true;

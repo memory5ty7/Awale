@@ -42,20 +42,18 @@ static void app(void)
 {
    SOCKET sock = init_connection();
    char buffer[BUF_SIZE]; // initilisation du buffer de lecture et d'écriture
-
-   ServerState serverState;
-
-   if (!loadUsers("users", &serverState))
+   ServerState serverState[1];
+   if (!loadUsers("users", serverState))
    {
       perror("loading users failed");
       exit(errno);
    }
 
-   serverState.session_count = 0;
+   serverState->session_count = 0;
 
-   serverState.waiting_count = 0;
+   serverState->waiting_count = 0;
 
-   serverState.nb_clients = 0; // nb de clients connectés
+   serverState->nb_clients = 0; // nb de clients connectés
 
    int max_fd = sock;
    fd_set rdfs;
@@ -65,30 +63,30 @@ static void app(void)
       FD_ZERO(&rdfs);
       FD_SET(sock, &rdfs);
 
-      for (int i = 0; i < serverState.waiting_count; i++)
+      for (int i = 0; i < serverState->waiting_count; i++)
       {
-         FD_SET(serverState.waiting_clients[i].sock, &rdfs);
-         if (serverState.waiting_clients[i].sock > max_fd)
+         FD_SET(serverState->waiting_clients[i]->sock, &rdfs);
+         if (serverState->waiting_clients[i]->sock > max_fd)
          {
-            max_fd = serverState.waiting_clients[i].sock;
+            max_fd = serverState->waiting_clients[i]->sock;
          }
       }
 
       /* add socket of each client */
-      for (int i = 0; i < serverState.nb_clients; i++)
+      for (int i = 0; i < serverState->nb_clients; i++)
       {
-         FD_SET(serverState.clients[i].sock, &rdfs);
+         FD_SET(serverState->clients[i].sock, &rdfs);
       }
-      for (int i = 0; i < serverState.session_count; i++)
+      for (int i = 0; i < serverState->session_count; i++)
       {
-         if (serverState.sessions[i].active)
+         if (serverState->sessions[i].active)
          {
             for (int j = 0; j < 2; j++)
             {
-               FD_SET(serverState.sessions[i].players[j].sock, &rdfs);
-               if (serverState.sessions[i].players[j].sock > max_fd)
+               FD_SET(serverState->sessions[i].players[j]->sock, &rdfs);
+               if (serverState->sessions[i].players[j]->sock > max_fd)
                {
-                  max_fd = serverState.sessions[i].players[j].sock;
+                  max_fd = serverState->sessions[i].players[j]->sock;
                }
             }
          }
@@ -115,7 +113,7 @@ static void app(void)
             closesocket(csock);
             continue;
          }
-         else if (serverState.nb_clients == MAX_CLIENTS)
+         else if (serverState->nb_clients == MAX_CLIENTS)
          {
             write_client(csock, "Il n'y a plus de place sur le serveur.\n");
             closesocket(csock);
@@ -135,34 +133,34 @@ static void app(void)
             strcpy(buffer, "\n\nBonjour. Bienvenue sur Awale! \nVous pouvez vous connecter avec /login [username] [password]\nSi c'est la première fois que vous vous connectez, utilisez /register [username] [password]\n");
             write_client(csock, buffer);
 
-            serverState.clients[serverState.nb_clients] = new_client;
-            serverState.nb_clients++;
+            serverState->clients[serverState->nb_clients] = new_client;
+            serverState->nb_clients++;
          }
       }
       else
       {
-         for (int i = 0; i < serverState.nb_clients; i++)
+         for (int i = 0; i < serverState->nb_clients; i++)
          {
             /* a client is talking */
-            if (FD_ISSET(serverState.clients[i].sock, &rdfs))
+            if (FD_ISSET(serverState->clients[i].sock, &rdfs))
             {
-               Client *client = &serverState.clients[i];
+               Client *client = &serverState->clients[i];
                int c = read_client(client->sock, buffer);
                /* logged_in player disconnected */
                if (c == 0 && client->logged_in && !client->in_game)
                {
                   closesocket(client->sock);
-                  remove_client(&serverState, i);
+                  remove_client(serverState, i);
                   strncpy(buffer, client->name, BUF_SIZE - 1);
                   strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
-                  send_message_to_all_clients(serverState, *client, buffer, 1);
+                  send_message_to_all_clients(*serverState, *client, buffer, 1);
                   // server trace
                   puts(buffer);
                }
                else if (c == 0 && !client->logged_in)
                { // client disconnected
                   closesocket(client->sock);
-                  remove_client(&serverState, i);
+                  remove_client(serverState, i);
                   // server trace
                   puts("client disconnected");
                }
@@ -181,7 +179,7 @@ static void app(void)
                   }
                   else if (strcmp(cmd, "/register") == 0)
                   {
-                     cmd_register(&serverState, client, bufferTemp);
+                     cmd_register(serverState, client, bufferTemp);
                   }
                   else
                   {
@@ -210,7 +208,7 @@ static void app(void)
                      }
                      else if (!client->in_game && !client->in_queue && strcmp(cmd, "/showgames") == 0)
                      {
-                        cmd_showgames(serverState, client, bufferTemp);
+                        cmd_showgames(client, bufferTemp);
                      }
                      else if (!client->in_game && !client->in_queue && strcmp(cmd, "/join") == 0)
                      {
@@ -262,10 +260,10 @@ static void app(void)
                         {
                            write_client(client->sock, "You have quit the game. You will be disconnected from the server.\n");
                            closesocket(client->sock);
-                           remove_client(&serverState, i);
+                           remove_client(serverState, i);
                            strncpy(buffer, client->name, BUF_SIZE - 1);
                            strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
-                           send_message_to_all_clients(serverState, *client, buffer, 1);
+                           send_message_to_all_clients(*serverState, *client, buffer, 1);
                            // server trace
                            puts(buffer);
                         }
@@ -286,7 +284,7 @@ static void app(void)
                         if (session != NULL)
                         {
                            // Seul le joueur actif peut effectuer un move
-                           if (strcmp(session->players[session->game.current].name, client->name) == 0)
+                           if (strcmp(session->players[session->game.current]->name, client->name) == 0)
                               handle_game_session(serverState, buffer, c, session);
                            else
                               write_client(client->sock, "Ce n'est pas votre tour.\n/chat [message] pour parler\n");
@@ -300,7 +298,7 @@ static void app(void)
                   }
                   else
                   {
-                     send_message_to_all_clients(serverState, *client, buffer, 0);
+                     send_message_to_all_clients(*serverState, *client, buffer, 0);
                   }
                   break;
                }
