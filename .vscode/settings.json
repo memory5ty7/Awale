@@ -4,7 +4,9 @@
         "client_serv.h": "c",
         "game_session.h": "c",
         "game.h": "c",
-        "server.h": "c"
+        "server.h": "c",
+        "server_state.h": "c",
+        "util.h": "c"
     }
 
 }
