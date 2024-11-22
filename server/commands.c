@@ -5,6 +5,7 @@
 
 #include "../include/server_state.h"
 #include "../include/util.h"
+#include "../include/game_controller.h"
 
 void cmd_chat(ServerState serverState, Client *client)
 {
@@ -299,13 +300,14 @@ void cmd_replay(ServerState serverState, Client *client, const char *buffer)
     if (gameId == NULL)
     {
         write_client(client->sock, "\nToo few arguments.\nUsage : /replay [game-id]\n");
+        return;
     }
 
     char filename[BUF_SIZE];
     strcpy(filename, "games/");
     strcat(filename, gameId);
 
-    // replay_game(serverState.clients, *client, filename, buffer);
+    start_replay_session(serverState, client, filename, buffer);
 }
 
 void cmd_showgames(ServerState serverState, Client *client, const char *buffer)

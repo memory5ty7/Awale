@@ -5,10 +5,12 @@
 #include <stdbool.h>
 #include <signal.h>
 #include <time.h>
+#include <sys/stat.h>
 
 #include "../include/server_state.h"
+#include "../include/util.h"
 
-void start_game_session(ServerState* serverState, char *buffer, Client player1, Client player2, GameSession *session)
+void start_game_session(ServerState *serverState, char *buffer, Client player1, Client player2, GameSession *session)
 {
    serverState->session_count++;
    session->nb_spectators = 0;
@@ -182,4 +184,68 @@ void spectator_join_session(char *buffer, Client *newSpectator, GameSession *ses
 
    displayBoard(buffer, BUF_SIZE, session->game, 3);
    write_client(newSpectator->sock, buffer);
+}
+
+void start_replay_session(ServerState serverState, Client *client, char *filename, char *buffer)
+{
+   strcat(filename,"\n");
+
+   puts(filename);
+
+   char message[BUF_SIZE];
+
+   FILE *file = fopen(filename, "r");
+   if (file == NULL)
+   {
+      perror("Fichier invalide.");
+      return;
+   }
+
+   // Read the last character of the file
+   fseek(file, -1, SEEK_END);
+   char lastChar = fgetc(file);
+
+   if (lastChar == '0')
+   {
+      // Go back to the beginning of the file
+      rewind(file);
+
+      // Read the first line
+      char line[BUF_SIZE];
+
+      if (fgets(line, sizeof(line), file))
+      {
+         char filestr[BUF_SIZE];
+
+         char *token = strtok(line, ";");
+         char player1[20];
+         strcpy(player1, token);
+
+         //token = strtok(NULL, ";");
+         char player2[20];
+         strcpy(player2, token);
+
+         int j = 0;
+         int moves[20];
+
+         //puts(token = strtok(NULL, ";"));
+         //puts(token = strtok(NULL, ";"));
+         while ((token = strtok(NULL, ";")) != NULL) {
+            moves[j++] = atoi(token); // Convert token to integer and store it
+         }
+         int nb_moves=j;
+         moves[nb_moves] = 0;
+
+         sprintf(filestr, "\n %s VS. %s\n", player1, player2);
+         write_client(client->sock, filestr);
+
+         for(int i=0;i<nb_moves;i++)
+         {
+            sprintf(message,"%d\n",moves[i]);
+            write_client(client->sock, message);
+         }
+      }
+   }
+
+   fclose(file); // Close the file
 }
