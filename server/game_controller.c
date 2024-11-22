@@ -8,9 +8,8 @@
 
 #include "../include/server_state.h"
 
-void start_game_session(ServerState* serverState, char *buffer, Client player1, Client player2, GameSession *session)
+void start_game_session(ServerState* serverState, char *buffer, Client player1, Client player2, GameSession *session, int state)
 {
-   serverState->session_count++;
    session->nb_spectators = 0;
    if (serverState->session_count >= MAX_SESSIONS)
    {

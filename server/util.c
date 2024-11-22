@@ -132,8 +132,8 @@ void send_message_to_all_clients(ServerState serverState, Client sender, const c
    message[0] = 0;
    for (i = 0; i < serverState.nb_clients; i++)
    {
-      /* we don't send message to the sender nor to not logged in clients*/
-      if (serverState.clients[i].logged_in && sender.sock != serverState.clients[i].sock)
+      /* we don't send message to the sender nor to Clients in game nor to not logged in clients */
+      if (serverState.clients[i].logged_in && sender.sock != serverState.clients[i].sock && !serverState.clients[i].in_game)
       {
          if (from_server == 0)
          {

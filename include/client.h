@@ -16,6 +16,8 @@ typedef struct
    bool in_game;
    bool logged_in;
    bool confirm_quit;
+   bool in_queue;
+   char challenger[BUF_SIZE];
 }Client;
 
 #endif /* guard */

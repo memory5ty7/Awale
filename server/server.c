@@ -130,6 +130,8 @@ static void app(void)
             FD_SET(csock, &rdfs);
             new_client.in_game = false;
             new_client.logged_in = false;
+            new_client.in_queue = false;
+            strcpy(new_client.challenger,"");
             strcpy(buffer, "\n\nBonjour. Bienvenue sur Awale! \nVous pouvez vous connecter avec /login [username] [password]\nSi c'est la première fois que vous vous connectez, utilisez /register [username] [password]\n");
             write_client(csock, buffer);
 
@@ -157,7 +159,7 @@ static void app(void)
                   // server trace
                   puts(buffer);
                }
-               else if (c == 0 && !client->logged_in && !client->in_game)
+               else if (c == 0 && !client->logged_in)
                { // client disconnected
                   closesocket(client->sock);
                   remove_client(&serverState, i);
@@ -192,43 +194,59 @@ static void app(void)
                   // input is a command
                   if (strncmp(buffer, "/", 1) == 0)
                   {
+                     char bufferTemp[BUF_SIZE];
+                     strncpy(bufferTemp, buffer, BUF_SIZE - 1);
+                     bufferTemp[BUF_SIZE - 1] = '\0'; // S'assurer que bufferTemp est nul-terminé
+
                      char *cmd = strtok(buffer, " ");
 
                      if (client->in_game && strcmp(cmd, "/chat") == 0)
                      {
-                        cmd_chat(serverState, client);
+                        cmd_chat(serverState, client, bufferTemp);
                      }
-                     else if (!client->in_game && strcmp(cmd, "/game") == 0)
+                     else if (!client->in_game && !client->in_queue && strcmp(cmd, "/game") == 0)
                      {
-                        cmd_game(serverState, client, buffer);
+                        cmd_game(serverState, client, bufferTemp);
                      }
-                     else if (strcmp(cmd, "/showgames") == 0)
+                     else if (!client->in_game && !client->in_queue && strcmp(cmd, "/showgames") == 0)
                      {
-                        cmd_showgames(serverState, client, buffer);
+                        cmd_showgames(serverState, client, bufferTemp);
                      }
-                     else if (strcmp(cmd, "/join") == 0)
+                     else if (!client->in_game && !client->in_queue && strcmp(cmd, "/join") == 0)
                      {
-                        cmd_join(serverState, client, buffer);
+                        cmd_join(serverState, client, bufferTemp);
                      }
-                     else if (strcmp(cmd, "/replay") == 0)
+                     else if (!client->in_game && !client->in_queue && strcmp(cmd, "/accept") == 0)
                      {
-                        cmd_replay(serverState, client, buffer);
+                        cmd_accept(serverState, client, bufferTemp);
+                     }
+                     else if (!client->in_game && !client->in_queue && strcmp(cmd, "/decline") == 0)
+                     {
+                        cmd_decline(serverState, client, bufferTemp);
+                     }
+                     else if (!client->in_game && !client->in_queue && strcmp(cmd, "/replay") == 0)
+                     {
+                        cmd_replay(serverState, client, bufferTemp);
+                     }
+                     else if (client->in_queue && strcmp(cmd, "/cancel") == 0)
+                     {
+                        cmd_cancel(serverState, client, bufferTemp);
                      }
                      else if (strcmp(cmd, "/msg") == 0)
                      {
-                        cmd_msg(serverState, client, buffer);
+                        cmd_msg(serverState, client, bufferTemp, i);
                      }
                      else if (strcmp(cmd, "/showusers") == 0)
                      {
-                        cmd_showusers(serverState, client, buffer);
+                        cmd_showusers(serverState, client, bufferTemp);
                      }
                      else if (strcmp(cmd, "/help") == 0)
                      {
-                        cmd_help(client);
+                        cmd_help(client, bufferTemp);
                      }
                      else if (strcmp(cmd, "/quit") == 0)
                      {
-                        cmd_quit(serverState, client, buffer);
+                        cmd_quit(serverState, client, bufferTemp);
                      }
                      else
                      {
@@ -280,7 +298,6 @@ static void app(void)
                         }
                      }
                   }
-
                   else
                   {
                      send_message_to_all_clients(serverState, *client, buffer, 0);
