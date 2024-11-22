@@ -4,6 +4,6 @@
 #include "server_state.h"
 
 void updateScores(const char *, const char *, const char *);
-bool loadUsers(char *, ServerState);
+bool loadUsers(char *, ServerState*);
 
 #endif /* guard */

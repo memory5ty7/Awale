@@ -1,10 +1,10 @@
-#include <stdio.h>#
+#include <stdio.h>
+#include <string.h>
 #include <dirent.h>
 #include <sys/stat.h>
 
 #include "../include/server_state.h"
 #include "../include/util.h"
-
 
 void cmd_chat(ServerState serverState, Client *client)
 {
@@ -122,18 +122,25 @@ void cmd_join(ServerState serverState, Client *client, const char *buffer)
     }
 }
 
-void cmd_login(ServerState serverState, Client *client, const char *buffer)
+void cmd_login(ServerState serverState, Client *client, char *buffer)
 {
-    char *cmd = strtok(buffer, " ");       // get command
-    char *username = strtok(NULL, " ");    // get user name
-    char *pwd = strtok(NULL, " ");         // get password
-    char *checkifspace = strtok(NULL, ""); // check if there is a space after the password (space in pwd or too many arguments)
+    char* cmd = strtok(buffer, " ");
+    char *username = strtok(NULL, " "); // get user name
+    char *pwd = strtok(NULL, " ");      // get password
     char userPass[NB_CHAR_PER_USERPWD];
+    char *checkifspace = strtok(NULL, ""); // check if there is a space after the password (space in pwd or too many arguments)
+
+    if (username != NULL && pwd != NULL)
+        strcat(strcat(strcpy(userPass, username), ";"), pwd);
 
     if (username == NULL || pwd == NULL)
+    {
         write_client(client->sock, "Too few arguments.\nUsage : /login [username] [password]\n");
+    }
     else if (checkifspace != NULL)
+    {
         write_client(client->sock, "Too many arguments.\nUsage : /login [username] [password]\n");
+    }
     else if (!authentification(userPass, serverState))
     {
         write_client(client->sock, "Mauvais utilisateur ou mot de passe.\n");
@@ -141,8 +148,6 @@ void cmd_login(ServerState serverState, Client *client, const char *buffer)
     else if (check_if_player_is_connected(serverState, username))
     {
         write_client(client->sock, "Vous êtes déjà connecté.\n");
-        closesocket(client->sock);
-        remove_client(&serverState, getClientID(serverState, client->name));
         // server trace
         puts("client disconnected");
     }
@@ -194,6 +199,39 @@ void quit(ServerState serverState, Client *client, const char *buffer)
     }
     else if (client->logged_in)
     {
+        strncpy(buffer, client->name, BUF_SIZE - 1);
+        strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
+
+        write_client(client->sock, "Exiting server...\n");
+
+        closesocket(client->sock);
+        remove_client(&serverState, getClientID(serverState, client->name));
+
+        send_message_to_all_clients(serverState, *client, buffer, 1);
+        // server trace
+        puts(buffer);
+    }
+    else
+    {
+        write_client(client->sock, "Exiting server...\n");
+        closesocket(client->sock);
+        remove_client(&serverState, getClientID(serverState, client->name));
+        // server trace
+        puts("client disconnected");
+    }
+}
+
+void cmd_quit(ServerState serverState, Client *client, const char *buffer)
+{
+    if (client->in_game && !isSpectator(client, getSessionByClient(serverState, &client))) // on met le warning uniquement si c'est un joueur actif
+    {
+        if (isSpectator(client, getSessionByClient(serverState, &client)))
+            puts("spectator is true");
+        write_client(client->sock, "Êtes-vous sûr de vouloir vous déconnecter ?\n[ATTENTION] Vous serez considéré perdant par forfait.\n (y/n)\n");
+        client->confirm_quit = true;
+    }
+    else if (client->logged_in)
+    {
         write_client(client->sock, "Exiting server...\n");
         closesocket(client->sock);
         remove_client(&serverState, getClientID(serverState, client->name));
@@ -213,11 +251,13 @@ void quit(ServerState serverState, Client *client, const char *buffer)
     }
 }
 
-void cmd_register(ServerState serverState, Client *client, const char *buffer)
+
+void cmd_register(ServerState* serverState, Client *client, char *buffer)
 {
 
-    char *username = strtok(NULL, " ");    // get user name
-    char *pwd = strtok(NULL, " ");         // get password
+    char* cmd = strtok(buffer, " ");
+    char *username = strtok(NULL, " "); // get user name
+    char *pwd = strtok(NULL, " ");      // get password
     char *checkifspace = strtok(NULL, ""); // check if there is a space after the password (space in pwd or too many arguments)
 
     if (username == NULL || pwd == NULL)
@@ -226,7 +266,7 @@ void cmd_register(ServerState serverState, Client *client, const char *buffer)
     {
         write_client(client->sock, "Spaces are not allowed in password.\nUsage : /register [username] [password]\n");
     }
-    else if (authentification(buffer, serverState))
+    else if (authentification(buffer, *serverState))
     {
         write_client(client->sock, "Cet utilisateur existe déjà.\nVeuillez-vous connecter avec /login\n");
     }
@@ -235,15 +275,19 @@ void cmd_register(ServerState serverState, Client *client, const char *buffer)
         FILE *file = fopen("users", "a");
         if (file == NULL)
         {
-            printf("Erreur à l'ouverture du fichier %s\n", "users");
+            printf("Erreur à l'ouverture du fichier users\n");
             return false;
         }
         fprintf(file, "%s;%s\n", username, pwd);
         fclose(file);
-        strcat(strcat(strcpy(buffer, "\n\nBonjour "), client->name), ". Vous êtes bien inscrit sur Awale !\nVous pouvez maintenant vous connecter avec /login\n");
+
+        sprintf(buffer, "\n\nBonjour %s. Vous êtes bien inscrit sur Awale !\nVous pouvez maintenant vous connecter avec /login\n",username);
+        //strcat(strcat(strcpy(buffer, "\n\nBonjour "), username), ". Vous êtes bien inscrit sur Awale !\nVous pouvez maintenant vous connecter avec /login\n");
         write_client(client->sock, buffer);
+        
+        loadUsers("users", serverState);
         // server trace
-        strcpy(buffer, client->name);
+        strcpy(buffer, username);
         puts(strcat(buffer, " registered"));
     }
 }
@@ -261,133 +305,133 @@ void cmd_replay(ServerState serverState, Client *client, const char *buffer)
     strcpy(filename, "games/");
     strcat(filename, gameId);
 
-    replay_game(serverState.clients, *client, filename, buffer);
+    // replay_game(serverState.clients, *client, filename, buffer);
 }
 
 void cmd_showgames(ServerState serverState, Client *client, const char *buffer)
 {
-   const char *folderPath = "games";     // Path to the folder
-   struct dirent *entry;                 // Pointer for directory entry
-   DIR *directory = opendir(folderPath); // Open the directory
+    const char *folderPath = "games";     // Path to the folder
+    struct dirent *entry;                 // Pointer for directory entry
+    DIR *directory = opendir(folderPath); // Open the directory
 
-   if (directory == NULL)
-   {
-      perror("Unable to open directory");
-      return;
-   }
+    if (directory == NULL)
+    {
+        perror("Unable to open directory");
+        return;
+    }
 
-   char message[BUF_SIZE];
+    char message[BUF_SIZE];
 
-   // Initialize the output buffer
-   message[0] = '\0';
+    // Initialize the output buffer
+    message[0] = '\0';
 
-   strcat(message, "Liste des parties :\n");
+    strcat(message, "Liste des parties :\n");
 
-   // Read and process all files in the folder
-   while ((entry = readdir(directory)) != NULL)
-   {
-      char *filename = entry->d_name;
+    // Read and process all files in the folder
+    while ((entry = readdir(directory)) != NULL)
+    {
+        char *filename = entry->d_name;
 
-      // Build the full path to the file
-      char filepath[512];
-      snprintf(filepath, sizeof(filepath), "%s/%s", folderPath, filename);
+        // Build the full path to the file
+        char filepath[512];
+        snprintf(filepath, sizeof(filepath), "%s/%s", folderPath, filename);
 
-      // Use stat to check if it is a regular file
-      struct stat fileStat;
-      if (stat(filepath, &fileStat) == -1 || !S_ISREG(fileStat.st_mode))
-      {
-         continue;
-      }
+        // Use stat to check if it is a regular file
+        struct stat fileStat;
+        if (stat(filepath, &fileStat) == -1 || !S_ISREG(fileStat.st_mode))
+        {
+            continue;
+        }
 
-      // Open the file
-      FILE *file = fopen(filepath, "r");
-      if (file == NULL)
-      {
-         perror("Error opening file");
-         continue;
-      }
+        // Open the file
+        FILE *file = fopen(filepath, "r");
+        if (file == NULL)
+        {
+            perror("Error opening file");
+            continue;
+        }
 
-      // Check if the file is not empty
-      if (fileStat.st_size > 0)
-      {
-         // Read the last character of the file
-         fseek(file, -1, SEEK_END);
-         char lastChar = fgetc(file);
+        // Check if the file is not empty
+        if (fileStat.st_size > 0)
+        {
+            // Read the last character of the file
+            fseek(file, -1, SEEK_END);
+            char lastChar = fgetc(file);
 
-         if (lastChar == '0')
-         {
-            // Go back to the beginning of the file
-            rewind(file);
-
-            // Read the first line
-            char line[BUF_SIZE];
-            if (fgets(line, sizeof(line), file))
+            if (lastChar == '0')
             {
-               char filestr[BUF_SIZE];
-               // Extract the first word before ';'
-               char *player1 = strtok(line, ";");
-               puts(player1);
-               char *player2 = strtok(NULL, ";");
-               puts(player2);
-               sanitizeFilename(filename);
-               sprintf(filestr, "- %s : %s VS. %s\n", filename, player1, player2);
-               strcat(message, filestr);
+                // Go back to the beginning of the file
+                rewind(file);
+
+                // Read the first line
+                char line[BUF_SIZE];
+                if (fgets(line, sizeof(line), file))
+                {
+                    char filestr[BUF_SIZE];
+                    // Extract the first word before ';'
+                    char *player1 = strtok(line, ";");
+                    puts(player1);
+                    char *player2 = strtok(NULL, ";");
+                    puts(player2);
+                    sanitizeFilename(filename);
+                    sprintf(filestr, "- %s : %s VS. %s\n", filename, player1, player2);
+                    strcat(message, filestr);
+                }
             }
-         }
-      }
+        }
 
-      fclose(file); // Close the file
-   }
+        fclose(file); // Close the file
+    }
 
-   closedir(directory); // Close the directory
+    closedir(directory); // Close the directory
 
-   write_client(client->sock, message);
+    write_client(client->sock, message);
 }
 
-void cmd_showusers(ServerState serverState, Client* sender, const char *buffer)
+void cmd_showusers(ServerState serverState, Client *sender, const char *buffer)
 {
-   char message[BUF_SIZE];
-   strcpy(message, "Liste des utilisateurs connectés:\n");
-   for (int i = 0; i < serverState.nb_clients; i++)
-   {
-      if (serverState.clients[i].logged_in)
-      {
-         char curUser[BUF_SIZE];
-         sprintf(curUser, "- %s : ", serverState.clients[i].name);
-         char status[BUF_SIZE];
-         if (serverState.clients[i].in_game)
-         {
-            GameSession *session = getSessionByClient(serverState, &serverState.clients[i]);
-            if (isSpectator(&serverState.clients[i], session))
+    char message[BUF_SIZE];
+    strcpy(message, "Liste des utilisateurs connectés:\n");
+    for (int i = 0; i < serverState.nb_clients; i++)
+    {
+        if (serverState.clients[i].logged_in)
+        {
+            char curUser[BUF_SIZE];
+            sprintf(curUser, "- %s : ", serverState.clients[i].name);
+            char status[BUF_SIZE];
+            if (serverState.clients[i].in_game)
             {
-               char player1[BUF_SIZE];
-               char player2[BUF_SIZE];
-               strcpy(player1, session->players[0].name);
-               strcpy(player2, session->players[1].name);
-               sprintf(status, "Regarde la partie entre %s et %s\n", player1, player2);
+                GameSession *session = getSessionByClient(serverState, &serverState.clients[i]);
+                if (isSpectator(&serverState.clients[i], session))
+                {
+                    char player1[BUF_SIZE];
+                    char player2[BUF_SIZE];
+                    strcpy(player1, session->players[0].name);
+                    strcpy(player2, session->players[1].name);
+                    sprintf(status, "Regarde la partie entre %s et %s\n", player1, player2);
+                }
+                else
+                {
+                    char opponent[BUF_SIZE];
+                    if (strcmp(session->players[0].name, serverState.clients[i].name) == 0)
+                    {
+                        strcpy(opponent, session->players[1].name);
+                    }
+                    else
+                    {
+                        strcpy(opponent, session->players[0].name);
+                    }
+                    sprintf(status, "En partie contre %s\n", opponent);
+                }
             }
             else
             {
-               char opponent[BUF_SIZE];
-               if (strcmp(session->players[0].name, serverState.clients[i].name) == 0)
-               {
-                  strcpy(opponent, session->players[1].name);
-               }
-               else
-               {
-                  strcpy(opponent, session->players[0].name);
-               }
-               sprintf(status, "En partie contre %s\n", opponent);
+                strcpy(status, "En ligne\n");
             }
-         }
-         else
-         {
-            strcpy(status, "En ligne\n");
-         }
-         strcat(curUser, status);
-         strcat(message, curUser);
-      }
-   }
+            strcat(curUser, status);
+            strcat(message, curUser);
+        }
+    }
 
-   write_client(sender->sock, message);
+    write_client(sender->sock, message);
 }

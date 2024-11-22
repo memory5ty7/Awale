@@ -62,7 +62,7 @@ void start_game_session(ServerState* serverState, char *buffer, Client player1, 
    displayBoard(buffer, BUF_SIZE, session->game, 1);
    write_client(session->players[1].sock, buffer);
 
-   fprintf(serverState->users, "%s;%s;", player1.name, player2.name);
+   fprintf(session->file, "%s;%s;", player1.name, player2.name);
 }
 
 void handle_game_session(ServerState serverState, char *buffer, int len_buf, GameSession *session)

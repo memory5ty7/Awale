@@ -45,7 +45,7 @@ static void app(void)
 
    ServerState serverState;
 
-   if (!loadUsers("users", serverState))
+   if (!loadUsers("users", &serverState))
    {
       perror("loading users failed");
       exit(errno);
@@ -166,20 +166,20 @@ static void app(void)
                }
                else if (!client->logged_in) // le client doit se connecter ou s'inscrire avant de pouvoir faire des actions
                {
-                  char *cmd = strtok(buffer, " ");    // get command
-                  char *username = strtok(NULL, " "); // get user name
-                  char *pwd = strtok(NULL, " ");      // get password
-                  char userPass[NB_CHAR_PER_USERPWD];
+                  char bufferTemp[BUF_SIZE];
 
-                  if (username != NULL && pwd != NULL)
-                     strcat(strcat(strcpy(userPass, username), ";"), pwd);
+                  strncpy(bufferTemp, buffer, BUF_SIZE - 1);
+                  bufferTemp[BUF_SIZE - 1] = '\0'; // S'assurer que bufferTemp est nul-terminé
+
+                  char *cmd = strtok(buffer, " ");    // get command
+
                   if (strcmp(cmd, "/login") == 0)
                   {
-                     cmd_login(serverState, client, buffer);
+                     cmd_login(serverState, client, bufferTemp);
                   }
                   else if (strcmp(cmd, "/register") == 0)
                   {
-                     cmd_register(serverState, client, buffer);
+                     cmd_register(&serverState, client, bufferTemp);
                   }
                   else
                   {

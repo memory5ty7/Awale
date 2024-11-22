@@ -72,7 +72,7 @@ int check_if_player_is_connected(ServerState serverState, char *name)
 
    for (int i = 0; i < serverState.nb_clients; i++)
    {
-      if (strcmp(serverState.clients[i].name, name) == 0)
+      if (strcmp(serverState.clients[i].name, name) == 0 && serverState.clients[i].logged_in)
       {
          return 1; // Player found
       }
@@ -82,14 +82,14 @@ int check_if_player_is_connected(ServerState serverState, char *name)
 
 bool authentification(char *userpassword, ServerState serverState)
 {
-    for (int i = 0; i < serverState.nbUsers; i++)
-    {
-        if (strcmp(serverState.userPwd[i], userpassword) == 0)
-        {
-            return true;
-        }
-    }
-    return false;
+   for (int i = 0; i < serverState.nbUsers; i++)
+   {
+      if (strcmp(serverState.userPwd[i], userpassword) == 0)
+      {
+         return true;
+      }
+   }
+   return false;
 }
 
 void remove_client(ServerState *serverState, int to_remove)
@@ -146,7 +146,7 @@ void send_message_to_all_clients(ServerState serverState, Client sender, const c
    }
 }
 
-static int init_connection(void)
+int init_connection(void)
 {
    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
    SOCKADDR_IN sin = {0};

@@ -13,7 +13,7 @@ typedef struct ServerState{
     int waiting_count;
     char userPwd[NB_USERS][NB_CHAR_PER_USERPWD];
     int nbUsers;
-    FILE* users;
+    //FILE* users;
 } ServerState;
 
 #endif /* guard */

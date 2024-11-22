@@ -3,8 +3,15 @@ CC = gcc
 CFLAGS = -w
 
 SRC_GAME = ./game/game.c
+SRC_COMMANDS = ./server/commands.c
+SRC_GAME_CONTROLLER = ./server/game_controller.c
+SRC_IO = ./server/io.c
+SRC_UTIL = ./server/util.c
+
+SRC_DEPENDENCIES = $(SRC_COMMANDS) $(SRC_GAME_CONTROLLER) $(SRC_IO) $(SRC_UTIL)
+
+SRC_SERVER = ./server/server.c $(SRC_GAME) $(SRC_DEPENDENCIES)
 SRC_PLAYER = ./client/player.c $(SRC_GAME)
-SRC_SERVER = ./server/server.c $(SRC_GAME)
 
 OBJ_GAME = $(SRC_GAME:.c=.o)
 OBJ_SERVER = $(SRC_SERVER:.c=.o)

@@ -57,21 +57,25 @@ void updateScores(const char *filename, const char *winnerName, const char *lose
    fclose(fileScores);
 }
 
-bool loadUsers(char *filename, ServerState serverState)
+bool loadUsers(char *filename, ServerState* serverState)
 {
    FILE *fptr = fopen(filename, "r");
+
    if (fptr == NULL)
    {
       printf("Erreur à l'ouverture du fichier %s\n", filename);
       return false;
    }
 
+   serverState->nbUsers = 0;
+
    char line[NB_CHAR_PER_USERPWD];
-   while (fgets(line, sizeof(line), fptr) && serverState.nbUsers < NB_USERS)
+   while (fgets(line, sizeof(line), fptr) && serverState->nbUsers < NB_USERS)
    {
       line[strcspn(line, "\r\n")] = '\0'; // Retire le \n
-      strcpy(serverState.userPwd[serverState.nbUsers], line);
-      (serverState.nbUsers)++;
+      strcpy(serverState->userPwd[serverState->nbUsers], line);
+      
+      (serverState->nbUsers)++;
    }
 
    fclose(fptr);
