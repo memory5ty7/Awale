@@ -124,6 +124,10 @@ Si vous souhaitez lancer une partie contre un adversaire précis, effectuez la c
 
 Le joueur en question reçoit alors une invitation.
 
+Si vous souhaitez annuler l'invitation, effectuez la commande :
+\
+``/cancel``
+
 Si vous souhaitez accepter l'invitation, effectuez la commande :
 \
 ``/accept``
