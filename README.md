@@ -127,7 +127,12 @@ Si vous souhaitez annuler l'invitation, effectuez la commande :
 \
 ``/cancel``
 
-Si vous souhaitez accepter une invitation, effectuez la commande :
+
+Si vous souhaitez annuler l'invitation, effectuez la commande :
+\
+``/cancel``
+
+Si vous souhaitez accepter l'invitation, effectuez la commande :
 \
 ``/accept``
 
