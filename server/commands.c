@@ -401,17 +401,22 @@ void cmd_quit(ServerState *serverState, Client *client, const char *buffer)
         write_client(client->sock, "\nToo many arguments.\nUsage : /quit\n");
         return;
     }
-    if (client->in_game && !isSpectator(client, getSessionByClient(serverState, client))) // on met le warning uniquement si c'est un joueur actif
+    if (client->in_game) // on met le warning uniquement si c'est un joueur actif
     {
-        if (isSpectator(client, getSessionByClient(serverState, client))) // server trace
-            puts("a spectator is sent a warning");
-        write_client(client->sock, "Êtes-vous sûr de vouloir vous déconnecter ?\n[ATTENTION] Vous serez considéré perdant par forfait.\n (y/n)\n");
-        client->confirm_quit = true;
+        if(!isSpectator(client, getSessionByClient(serverState, client)))
+        {
+            write_client(client->sock, "Êtes-vous sûr de vouloir vous déconnecter ?\n[ATTENTION] Vous serez considéré perdant par forfait.\n (y/n)\n");
+            client->confirm_quit = true;
+        }
     }
     else if (client->in_replay)
     {
-        // A faire (quit pendant un replay)
+        sprintf(buffer, "%s disconnected !\n", client->name);
+        send_message_to_all_clients(*serverState, *client, buffer, 1);
         client->in_replay = false;
+
+        closesocket(client->sock);
+        remove_client(serverState, getClientID(*serverState, client->name));
     }
     else if (client->in_queue)
     {
@@ -758,6 +763,20 @@ void cmd_showusers(ServerState *serverState, Client *sender, const char *buffer)
                 strcat(curUser, status);
                 strcat(message, curUser);
             }
+            else if (serverState->clients[i].in_replay)
+            {
+                strcpy(status, "Regarde un replay\n");
+            }
+            else if (serverState->clients[i].in_queue)
+            {
+                strcpy(status, "Cherche une partie\n");
+            }
+            else
+            {
+                strcpy(status, "En ligne\n");
+            }
+            strcat(curUser, status);
+            strcat(message, curUser);
         }
         fclose(file);
         write_client(sender->sock, message);

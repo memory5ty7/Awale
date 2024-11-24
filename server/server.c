@@ -84,12 +84,12 @@ static void app(void)
          }
       }
 
-
       /* add socket of each client */
       for (int i = 0; i < serverState->nb_clients; i++)
       {
          FD_SET(serverState->clients[i].sock, &rdfs);
       }
+
       for (int i = 0; i < serverState->session_count; i++)
       {
          if (serverState->sessions[i].active)
@@ -104,6 +104,7 @@ static void app(void)
             }
          }
       }
+      /*
       for (int i = 0; i < serverState->rSession_count; i++)
       {
          FD_SET(serverState->rSessions[i].player->sock, &rdfs);
@@ -112,6 +113,7 @@ static void app(void)
             max_fd = serverState->rSessions[i].player->sock;
          }
       }
+      */
 
       if (select(max_fd + 1, &rdfs, NULL, NULL, NULL) == -1)
       {
@@ -153,7 +155,7 @@ static void app(void)
             new_client.in_replay = false;
             strcpy(new_client.challenger, "");
             strcpy(buffer, "\n\nBonjour. Bienvenue sur Awale! \nVous pouvez vous connecter avec /login [username] [password]\nSi c'est la première fois que vous vous connectez, utilisez /register [username] [password]\n");
-           
+
             write_client(csock, buffer);
 
             serverState->clients[serverState->nb_clients] = new_client;
@@ -169,23 +171,80 @@ static void app(void)
             {
                Client *client = &serverState->clients[i];
                int c = read_client(client->sock, buffer);
-               /* logged_in player disconnected */
-               if (c == 0 && client->logged_in && !client->in_game && !client->in_replay)
+
+               if (c == 0)
                {
-                  closesocket(client->sock);
-                  strncpy(buffer, client->name, BUF_SIZE - 1);
-                  strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
-                  send_message_to_all_clients(*serverState, *client, buffer, 1);
-                  remove_client(serverState, i);
-                  // server trace
-                  puts(buffer);
-               }
-               else if (c == 0 && !client->logged_in)
-               { // client disconnected
-                  closesocket(client->sock);
-                  remove_client(serverState, i);
-                  // server trace
-                  puts("client disconnected");
+                  if (!client->logged_in)
+                  {
+                     closesocket(client->sock);
+                     remove_client(serverState, i);
+                     puts("client disconnected");
+                  }
+                  else
+                  {
+                     if (client->in_game)
+                     {
+                        GameSession *session = getSessionByClient(serverState, client);
+                        Client *opponent;
+
+                        if (isSpectator(client, session))
+                        {
+                           snprintf(buffer, BUF_SIZE, "%s a quitté la partie.\n", client->name);
+
+                           session->nb_spectators--;
+
+                           closesocket(client->sock);
+                           remove_client(serverState, i);
+                        }
+                        else
+                        {
+                           snprintf(buffer, BUF_SIZE, "%s a quitté la partie. Fin de la partie.\n", client->name);
+
+                           for (int i = 0; i < 2; i++)
+                           {
+                              if (client->name != session->players[i]->name)
+                              {
+                                 opponent = session->players[i];
+                              }
+                           }
+
+                           for (int i = 0; i < session->nb_spectators; i++)
+                           {
+                              write_client(session->spectators[i]->sock, buffer);
+                              session->spectators[i]->in_game = false;
+                           }
+
+                           write_client(opponent->sock, buffer);
+                           session->players[0]->in_game = false;
+                           session->players[1]->in_game = false;
+
+                           fprintf(session->file, "0");
+                           fclose(session->file);
+                           session->active = false;
+
+                           closesocket(client->sock);
+                           remove_client(serverState, i);
+                        }
+                     }
+                     else if (client->in_replay)
+                     {
+                        sprintf(buffer, "%s disconnected !\n", client->name);
+                        send_message_to_all_clients(*serverState, *client, buffer, 1);
+
+                        client->in_replay = false;
+
+                        closesocket(client->sock);
+                        remove_client(serverState, i);
+                     }
+                     else
+                     {
+                        strncat(buffer, "%s disconnected !", client->name);
+                        send_message_to_all_clients(*serverState, *client, buffer, 1);
+
+                        closesocket(client->sock);
+                        remove_client(serverState, i);
+                     }
+                  }
                }
                else if (!client->logged_in) // le client doit se connecter ou s'inscrire avant de pouvoir faire des actions
                {
@@ -291,8 +350,6 @@ static void app(void)
                            strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
                            send_message_to_all_clients(*serverState, *client, buffer, 1);
                            remove_client(serverState, i);
-                           // server trace
-                           puts(buffer);
                         }
                         else if (strcmp(buffer, "n") == 0 || strcmp(buffer, "N") == 0 || strcmp(buffer, "no") == 0)
                         {
