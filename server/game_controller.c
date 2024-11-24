@@ -156,7 +156,7 @@ void end_game(char *buffer, GameSession *session)
 
    fprintf(session->file, "0");
    fclose(session->file);
-   updateScores("scores", winner->name, loser->name);
+   updateScores("data/scores", winner->name, loser->name);
 
    session->players[0]->in_game = false;
    session->players[1]->in_game = false;

@@ -43,7 +43,7 @@ static void app(void)
    SOCKET sock = init_connection();
    char buffer[BUF_SIZE]; // initilisation du buffer de lecture et d'écriture
    ServerState serverState[1];
-   if (!loadUsers("users", serverState))
+   if (!loadUsers("data/users", serverState))
    {
       perror("loading users failed");
       exit(errno);

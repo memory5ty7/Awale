@@ -89,7 +89,7 @@ void cmd_game(ServerState *serverState, Client *client, const char *buffer)
                 if (clientDest->in_game)
                 {
                     strcpy(buffer, clientDest->name);
-                    strcat(buffer, " est déjà dans une partie.\n Attendez qu'il est fini pour lui renvoyer une invitation.\n");
+                    strcat(buffer, " est déjà dans une partie.\nAttendez qu'il ait fini pour lui renvoyer une invitation.\n");
                     write_client(client->sock, buffer);
                     return;
                 }
