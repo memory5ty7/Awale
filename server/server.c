@@ -53,7 +53,8 @@ static void app(void)
 
    serverState->rSession_count = 0;
 
-   serverState->waiting_count = 0;
+   serverState->waiting_count_r = 0; //right and left rotation
+   serverState->waiting_count_l = 0;
 
    serverState->nb_clients = 0; // nb de clients connectés
 
@@ -65,15 +66,25 @@ static void app(void)
       FD_ZERO(&rdfs);
       FD_SET(sock, &rdfs);
 
-      for (int i = 0; i < serverState->waiting_count; i++)
+      for (int i = 0; i < serverState->waiting_count_r; i++)
       {
-         FD_SET(serverState->waiting_clients[i]->sock, &rdfs);
-         if (serverState->waiting_clients[i]->sock > max_fd)
+         FD_SET(serverState->waiting_clients_r[i]->sock, &rdfs);
+         if (serverState->waiting_clients_r[i]->sock > max_fd)
          {
-            max_fd = serverState->waiting_clients[i]->sock;
+            max_fd = serverState->waiting_clients_r[i]->sock;
          }
       }
 
+      for (int i = 0; i < serverState->waiting_count_l; i++)
+      {
+         FD_SET(serverState->waiting_clients_l[i]->sock, &rdfs);
+         if (serverState->waiting_clients_l[i]->sock > max_fd)
+         {
+            max_fd = serverState->waiting_clients_l[i]->sock;
+         }
+      }
+
+      /* add socket of each client */
       for (int i = 0; i < serverState->nb_clients; i++)
       {
          FD_SET(serverState->clients[i].sock, &rdfs);

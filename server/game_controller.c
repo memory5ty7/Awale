@@ -10,7 +10,7 @@
 #include "../include/io.h"
 #include "../include/util.h"
 
-void start_game_session(ServerState *serverState, char *buffer, Client *player1, Client *player2, GameSession *session, int state)
+void start_game_session(ServerState *serverState, char *buffer, Client *player1, Client *player2, GameSession *session, int rotation)
 {
    if (serverState->session_count >= MAX_SESSIONS)
    {
@@ -22,7 +22,7 @@ void start_game_session(ServerState *serverState, char *buffer, Client *player1,
    session->nb_spectators = 0;
    session->players[0] = player1;
    session->players[1] = player2;
-   session->game = initGame(1);
+   session->game = initGame(rotation);
    session->active = true;
 
    time_t current_time = time(NULL);

@@ -5,7 +5,7 @@
 #include "game_session.h"
 #include "client.h"
 
-void start_game_session(ServerState*, char *, Client*, Client*, GameSession *);
+void start_game_session(ServerState*, char *, Client*, Client*, GameSession *,int);
 void handle_game_session(ServerState*, char *, int, GameSession *);
 void spectator_join_session(char *, Client *, GameSession *);
 void end_game(char *, GameSession *);

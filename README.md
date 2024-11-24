@@ -99,7 +99,7 @@ Si vous souhaitez afficher la liste des parties terminées, effectuez la command
 
 Cette commande affiche la liste des parties terminées. Ces parties sont disponibles dans le dossier ``games``.
 \
-Chaque partie a pour le nom l'instant à laquelle elle a été lancée (à la seconde près).
+Chaque partie a pour nom l'instant à laquelle elle a été lancée (à la seconde près).
 \
 Chaque fichier contient le nom des 2 joueurs ainsi que la liste de tous les coups effectués.
 
@@ -123,6 +123,10 @@ Si vous souhaitez lancer une partie contre un adversaire précis, effectuez la c
 ``/game <username>`` avec ``<username>`` l'utilisateur que vous voulez défier.
 
 Le joueur en question reçoit alors une invitation.
+Si vous souhaitez annuler l'invitation, effectuez la commande :
+\
+``/cancel``
+
 
 Si vous souhaitez annuler l'invitation, effectuez la commande :
 \
@@ -132,7 +136,7 @@ Si vous souhaitez accepter l'invitation, effectuez la commande :
 \
 ``/accept``
 
-Si vous souhaitez refuser l'invitation, effectuez la commande :
+Si vous souhaitez refuser une invitation, effectuez la commande :
 \
 ``/decline``
 \
