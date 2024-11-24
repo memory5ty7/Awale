@@ -10,6 +10,7 @@ GameSession *getSessionByClient(ServerState*, Client *);
 GameSession *getReplayByClient(ServerState*, Client *);
 bool isSpectator(Client *, GameSession *);
 bool check_if_player_is_connected(ServerState, char *);
+bool userExist(char *userpassword, ServerState serverState);
 bool authentification(char *userpassword, ServerState serverState);
 
 void clear_clients(Client *, int);

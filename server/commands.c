@@ -22,7 +22,7 @@ void cmd_chat(ServerState *serverState, Client *client, char *buffer)
         strcpy(playerMessage, token);
         snprintf(messageToSend, sizeof(messageToSend), "%s: %s", client->name, playerMessage);
     }
-    else 
+    else
     {
         write_client(client->sock, "\nToo few arguments.\nUsage : /chat [message]\n");
         return;
@@ -59,24 +59,66 @@ void cmd_chat(ServerState *serverState, Client *client, char *buffer)
 void cmd_game(ServerState *serverState, Client *client, const char *buffer)
 {
     strtok(buffer, " "); // skip the command
+    char *mode = strtok(NULL, " ");
     char *opponent = strtok(NULL, "");
+    int rotation = 0;
+    if (mode == NULL)
+    {
+        write_client(client->sock, "Usage : /game [rotation(right/left)] [(optionnal) username]\n");
+        return;
+    }
+    else if (strcmp(mode, "r") == 0 || strcmp(mode, "right") == 0 || strcmp(mode, "R") == 0 || strcmp(mode, "Right") == 0 || strcmp(mode, "RIGHT") == 0)
+    {
+        rotation = 1;
+    }
+    else if (strcmp(mode, "l") == 0 || strcmp(mode, "left") == 0 || strcmp(mode, "L") == 0 || strcmp(mode, "Left") == 0 || strcmp(mode, "LEFT") == 0)
+    {
+        rotation = -1;
+    }
+    else
+    {
+        write_client(client->sock, "Usage : /game [rotation(right/left)] [(optionnal) username]\n");
+        return;
+    }
+
     if (opponent == NULL)
     {
         client->in_queue = true;
-        serverState->waiting_clients[serverState->waiting_count++] = client;
-        if (serverState->waiting_count == 2)
+        if (rotation == 1)
         {
-            serverState->waiting_clients[0]->in_game = true;
-            serverState->waiting_clients[1]->in_game = true;
-            serverState->waiting_clients[0]->in_queue = false;
-            serverState->waiting_clients[1]->in_queue = false;
+            serverState->waiting_clients_r[serverState->waiting_count_r++] = client;
+            if (serverState->waiting_count_r == 2)
+            {
+                serverState->waiting_clients_r[0]->in_game = true;
+                serverState->waiting_clients_r[1]->in_game = true;
+                serverState->waiting_clients_r[0]->in_queue = false;
+                serverState->waiting_clients_r[1]->in_queue = false;
 
-            start_game_session(serverState, buffer, serverState->waiting_clients[0], serverState->waiting_clients[1], &serverState->sessions[serverState->session_count]);
-            serverState->waiting_count = 0;
+                start_game_session(serverState, buffer, serverState->waiting_clients_r[0], serverState->waiting_clients_r[1], &serverState->sessions[serverState->session_count], rotation);
+                serverState->waiting_count_r = 0;
+            }
+            else
+            {
+                write_client(client->sock, "En attente d'un adversaire...\n");
+            }
         }
         else
         {
-            write_client(client->sock, "En attente d'un adversaire...\n");
+            serverState->waiting_clients_l[serverState->waiting_count_l++] = client;
+            if (serverState->waiting_count_l == 2)
+            {
+                serverState->waiting_clients_l[0]->in_game = true;
+                serverState->waiting_clients_l[1]->in_game = true;
+                serverState->waiting_clients_l[0]->in_queue = false;
+                serverState->waiting_clients_l[1]->in_queue = false;
+
+                start_game_session(serverState, buffer, serverState->waiting_clients_l[0], serverState->waiting_clients_l[1], &serverState->sessions[serverState->session_count], rotation);
+                serverState->waiting_count_l = 0;
+            }
+            else
+            {
+                write_client(client->sock, "En attente d'un adversaire...\n");
+            }
         }
     }
     else
@@ -101,7 +143,13 @@ void cmd_game(ServerState *serverState, Client *client, const char *buffer)
                 else
                 {
                     strcpy(buffer, client->name);
-                    strcat(buffer, " vous a invité à jouer une partie. Acceptez-vous ?\n/accept pour accepter\n/decline pour refuser\n");
+                    if (rotation == 1){
+                        strcat(buffer, " vous a invité à jouer une partie 'counter-clockwise'. Acceptez-vous ?\n/accept pour accepter\n/decline pour refuser\n");
+                    }
+                    else{
+                        strcat(buffer, " vous a invité à jouer une partie 'clockwise'. Acceptez-vous ?\n/accept pour accepter\n/decline pour refuser\n");
+                    }
+                    
                     write_client(clientDest->sock, buffer);
 
                     strcpy(buffer, "Une invitation a été envoyée à ");
@@ -110,6 +158,7 @@ void cmd_game(ServerState *serverState, Client *client, const char *buffer)
                     write_client(client->sock, buffer);
 
                     client->in_queue = true;
+                    client->rotation = rotation;
                     strcpy(clientDest->challenger, client->name);
                     return;
                 }
@@ -137,8 +186,7 @@ void cmd_accept(ServerState *serverState, Client *client, const char *buffer)
         Client *challenger = &serverState->clients[getClientID(*serverState, client->challenger)];
         challenger->in_game = true;
         challenger->in_queue = false;
-        start_game_session(serverState, buffer, client, challenger, &serverState->sessions[serverState->session_count]);
-
+        start_game_session(serverState, buffer, client, challenger, &serverState->sessions[serverState->session_count], challenger->rotation);
         strcpy(client->challenger, "");
     }
     else
@@ -200,7 +248,10 @@ void cmd_cancel(ServerState *serverState, Client *client, const char *buffer)
     }
     // si on arrive ici, c'est que le client n'a pas envoyé d'invitation et donc qu'il est en random (/game sans arguments)
     client->in_queue = false;
-    serverState->waiting_count--;
+    if (strcmp(serverState->waiting_clients_r[0]->name, client->name) == 0)
+        serverState->waiting_count_r--;
+    else
+        serverState->waiting_count_l--;
     write_client(client->sock, "Recherche de partie annulée.\n");
 }
 
@@ -282,7 +333,10 @@ void cmd_login(ServerState *serverState, Client *client, char *buffer)
     }
     else if (!authentification(userPass, *serverState))
     {
-        write_client(client->sock, "Mauvais utilisateur ou mot de passe.\n");
+        if (userExist(userPass, *serverState))
+            write_client(client->sock, "Mauvais mot de passe.\n");
+        else
+            write_client(client->sock, "Cet utilisateur n'existe pas.\nVeuillez-vous inscrire avec /register\n");
     }
     else if (check_if_player_is_connected(*serverState, username))
     {
@@ -349,14 +403,14 @@ void cmd_quit(ServerState *serverState, Client *client, const char *buffer)
     }
     if (client->in_game && !isSpectator(client, getSessionByClient(serverState, client))) // on met le warning uniquement si c'est un joueur actif
     {
-        if (isSpectator(client, getSessionByClient(serverState, client))) //server trace
+        if (isSpectator(client, getSessionByClient(serverState, client))) // server trace
             puts("a spectator is sent a warning");
         write_client(client->sock, "Êtes-vous sûr de vouloir vous déconnecter ?\n[ATTENTION] Vous serez considéré perdant par forfait.\n (y/n)\n");
         client->confirm_quit = true;
     }
     else if (client->in_replay)
     {
-        //A faire (quit pendant un replay)
+        // A faire (quit pendant un replay)
         client->in_replay = false;
     }
     else if (client->in_queue)
@@ -374,12 +428,12 @@ void cmd_quit(ServerState *serverState, Client *client, const char *buffer)
     else if (client->logged_in)
     {
         GameSession *session = getSessionByClient(serverState, client);
-        if (isSpectator(client, session)) //server trace
-            {
-                int to_remove = getSpectatorID(session, client->name);
-                memmove(session->spectators + to_remove, session->spectators + to_remove + 1, (session->nb_spectators - to_remove - 1) * sizeof(Client*));
-                session->nb_spectators--;
-            }
+        if (isSpectator(client, session)) // server trace
+        {
+            int to_remove = getSpectatorID(session, client->name);
+            memmove(session->spectators + to_remove, session->spectators + to_remove + 1, (session->nb_spectators - to_remove - 1) * sizeof(Client *));
+            session->nb_spectators--;
+        }
         write_client(client->sock, "Exiting server...\n");
         closesocket(client->sock);
         strncpy(buffer, client->name, BUF_SIZE - 1);
@@ -412,19 +466,28 @@ void cmd_register(ServerState *serverState, Client *client, char *buffer)
     {
         write_client(client->sock, "Spaces are not allowed in password.\nUsage : /register [username] [password]\n");
     }
-    else if (authentification(buffer, *serverState))
+    else if (userExist(buffer, *serverState))
     {
         write_client(client->sock, "Cet utilisateur existe déjà.\nVeuillez-vous connecter avec /login\n");
     }
     else
     {
-        FILE *file = fopen("users", "a");
+        FILE *file = fopen("data/users", "a");
         if (file == NULL)
         {
             printf("Erreur à l'ouverture du fichier users\n");
             return false;
         }
         fprintf(file, "%s;%s\n", username, pwd);
+        fclose(file);
+
+        file = fopen("data/scores", "a");
+        if (file == NULL)
+        {
+            printf("Erreur à l'ouverture du fichier scores\n");
+            return false;
+        }
+        fprintf(file, "%s;%s;%s\n", username, "0", "0");
         fclose(file);
 
         sprintf(buffer, "\n\nBonjour %s. Vous êtes bien inscrit sur Awale !\nVous pouvez maintenant vous connecter avec /login\n", username);
@@ -434,6 +497,7 @@ void cmd_register(ServerState *serverState, Client *client, char *buffer)
         loadUsers("users", serverState); // on reload les users mtn qu'on en a rajouté un nouveau
 
         // server trace
+        buffer[0] = 0;
         strcpy(buffer, username);
         puts(strcat(buffer, " registered"));
     }
@@ -488,7 +552,7 @@ void cmd_replay(ServerState *serverState, Client *client, const char *buffer)
     {
         strcpy(player1, token);
     }
-    else 
+    else
     {
         write_client(client->sock, "Erreur de lecture du fichier.\n");
         return false;
@@ -499,7 +563,7 @@ void cmd_replay(ServerState *serverState, Client *client, const char *buffer)
     {
         strcpy(player2, token);
     }
-    else 
+    else
     {
         write_client(client->sock, "Erreur de lecture du fichier.\n");
         return false;
@@ -514,10 +578,10 @@ void cmd_replay(ServerState *serverState, Client *client, const char *buffer)
         moves[num_count++] = temp;
     }
 
-    client->in_replay=true;
+    client->in_replay = true;
 
     char message[NB_CHAR_PER_USERPWD];
-    sprintf(message, "\n%s : %s VS. %s\nEnvoyez un message pour passer au tour suivant.\n",gameId, player1, player2);
+    sprintf(message, "\n%s : %s VS. %s\nEnvoyez un message pour passer au tour suivant.\n", gameId, player1, player2);
     write_client(client->sock, message);
 
     start_replay_session(serverState, buffer, client, gameId, moves, num_count, &serverState->rSessions[serverState->rSession_count]);
@@ -550,7 +614,7 @@ void cmd_showgames(Client *client, const char *buffer)
 
     strcat(message, "\nListe des parties :\n");
 
-    int nb_games=0;
+    int nb_games = 0;
 
     // Read and process all files in the folder
     while ((entry = readdir(directory)) != NULL)
@@ -610,7 +674,7 @@ void cmd_showgames(Client *client, const char *buffer)
 
     closedir(directory); // Close the directory
 
-    if(nb_games == 0)
+    if (nb_games == 0)
     {
         strcpy(message, "Il n'y a pas encore de parties qui ont été jouées.\nSoyez le premier à en faire une !\n");
     }
@@ -628,56 +692,74 @@ void cmd_showusers(ServerState *serverState, Client *sender, const char *buffer)
         return;
     }
 
-    char message[BUF_SIZE];
-    strcpy(message, "\nListe des utilisateurs connectés:\n");
-    for (int i = 0; i < serverState->nb_clients; i++)
+    // lis le fichier "scores" et pour les utilisateurs connectés, affiche leur score
+    FILE *file = fopen("data/scores", "r");
+    if (file == NULL)
     {
-        if (serverState->clients[i].logged_in)
+        perror("Unable to open scores file");
+        return;
+    }
+    else
+    {
+        char message[BUF_SIZE];
+        strcpy(message, "\nListe des utilisateurs connectés:\n");
+
+        // on parcours chaque utilisateur et on affiche son nom s'il est connecté
+        char line[BUF_SIZE];
+        while (fgets(line, sizeof(line), file))
         {
-            char curUser[BUF_SIZE];
-            sprintf(curUser, "- %s : ", serverState->clients[i].name);
-            char status[BUF_SIZE];
-            if (serverState->clients[i].in_game)
+            char *username = strtok(line, ";");
+            char *victoire = strtok(NULL, ";");
+            char *defaite = strtok(NULL, ";");
+            defaite[strcspn(defaite, "\r\n")] = '\0'; // Retire le \n
+            int i = getClientID(*serverState, username);
+            if (i != -1) // le client est connecté
             {
-                GameSession *session = getSessionByClient(serverState, &serverState->clients[i]);
-                if (isSpectator(&serverState->clients[i], session))
+                char curUser[BUF_SIZE];
+                sprintf(curUser, "- %s [V:%s/D:%s]: ", serverState->clients[i].name, victoire, defaite);
+                char status[BUF_SIZE];
+                if (serverState->clients[i].in_game)
                 {
-                    char player1[BUF_SIZE];
-                    char player2[BUF_SIZE];
-                    strcpy(player1, session->players[0]->name);
-                    strcpy(player2, session->players[1]->name);
-                    sprintf(status, "Regarde la partie entre %s et %s\n", player1, player2);
-                }
-                else
-                {
-                    char opponent[BUF_SIZE];
-                    if (strcmp(session->players[0]->name, serverState->clients[i].name) == 0)
+                    GameSession *session = getSessionByClient(serverState, &serverState->clients[i]);
+                    if (isSpectator(&serverState->clients[i], session))
                     {
-                        strcpy(opponent, session->players[1]->name);
+                        char player1[BUF_SIZE];
+                        char player2[BUF_SIZE];
+                        strcpy(player1, session->players[0]->name);
+                        strcpy(player2, session->players[1]->name);
+                        sprintf(status, "Regarde la partie entre %s et %s\n", player1, player2);
                     }
                     else
                     {
-                        strcpy(opponent, session->players[0]->name);
+                        char opponent[BUF_SIZE];
+                        if (strcmp(session->players[0]->name, serverState->clients[i].name) == 0)
+                        {
+                            strcpy(opponent, session->players[1]->name);
+                        }
+                        else
+                        {
+                            strcpy(opponent, session->players[0]->name);
+                        }
+                        sprintf(status, "En partie contre %s\n", opponent);
                     }
-                    sprintf(status, "En partie contre %s\n", opponent);
                 }
+                else if (serverState->clients[i].in_replay)
+                {
+                    strcpy(status, "Regarde un replay\n");
+                }
+                else if (serverState->clients[i].in_queue)
+                {
+                    strcpy(status, "Cherche une partie\n");
+                }
+                else
+                {
+                    strcpy(status, "En ligne\n");
+                }
+                strcat(curUser, status);
+                strcat(message, curUser);
             }
-            else if (serverState->clients[i].in_replay)
-            {
-                strcpy(status, "Regarde un replay\n");
-            } 
-            else if (serverState->clients[i].in_queue)
-            {
-                strcpy(status, "Cherche une partie\n");
-            }                     
-            else
-            {
-                strcpy(status, "En ligne\n");
-            }
-            strcat(curUser, status);
-            strcat(message, curUser);
         }
+        fclose(file);
+        write_client(sender->sock, message);
     }
-
-    write_client(sender->sock, message);
 }

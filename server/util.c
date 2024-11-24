@@ -101,7 +101,19 @@ bool check_if_player_is_connected(ServerState serverState, char *name)
    }
    return false; // Player not found
 }
-
+bool userExist(char *userpassword, ServerState serverState)
+{
+   char* user = strtok(userpassword, ";");
+   for (int i = 0; i < serverState.nbUsers; i++)
+   {
+      char * usersrv = strtok(serverState.userPwd[i], ";");
+      if (strcmp(usersrv, userpassword) == 0)
+      {
+         return true;
+      }
+   }
+   return false;
+}
 bool authentification(char *userpassword, ServerState serverState)
 {
    for (int i = 0; i < serverState.nbUsers; i++)
@@ -121,7 +133,7 @@ void remove_client(ServerState *serverState, int to_remove)
    /* number client - 1 */
    serverState->nb_clients--;
    
-   //we check all the possible changes on session, waiting_clients etc. due to the removal of the client
+   //we check all the possible changes on session, waiting_clients_r etc. due to the removal of the client
    for (int i = 0; i < serverState->session_count; i++)
    {
       if (getClientID(*serverState, serverState->sessions[i].players[0]->name) > to_remove)
@@ -142,15 +154,25 @@ void remove_client(ServerState *serverState, int to_remove)
          }
       }
    }
-   //pareil pour waiting counts
-   for (int i = 0; i < serverState->waiting_count; i++)
+   //pareil pour les waiting counts
+   for (int i = 0; i < serverState->waiting_count_r; i++)
    {
-      if (getClientID(*serverState, serverState->waiting_clients[i]->name) > to_remove)
+      if (getClientID(*serverState, serverState->waiting_clients_r[i]->name) > to_remove)
       {
          puts("update de waiting client");
-         puts(serverState->waiting_clients[i]->name);
-         serverState->waiting_clients[i] = &serverState->clients[getClientID(*serverState, serverState->waiting_clients[i]->name)-1];
-         puts(serverState->waiting_clients[i]->name);
+         puts(serverState->waiting_clients_r[i]->name);
+         serverState->waiting_clients_r[i] = &serverState->clients[getClientID(*serverState, serverState->waiting_clients_r[i]->name)-1];
+         puts(serverState->waiting_clients_r[i]->name);
+      }
+   }
+   for (int i = 0; i < serverState->waiting_count_l; i++)
+   {
+      if (getClientID(*serverState, serverState->waiting_clients_l[i]->name) > to_remove)
+      {
+         puts("update de waiting client");
+         puts(serverState->waiting_clients_l[i]->name);
+         serverState->waiting_clients_l[i] = &serverState->clients[getClientID(*serverState, serverState->waiting_clients_l[i]->name)-1];
+         puts(serverState->waiting_clients_l[i]->name);
       }
    }
 }

@@ -17,6 +17,7 @@ typedef struct
    bool logged_in;
    bool confirm_quit;
    bool in_queue;
+   int rotation;
    bool in_replay;
    char challenger[BUF_SIZE];
 }Client;
