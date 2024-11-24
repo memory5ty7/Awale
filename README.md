@@ -81,7 +81,7 @@ Si vous souhaitez afficher la liste des joueurs connectés, effectuez la command
 \
 ``/showusers``
 
-Cette commande affiche la liste des utilisateurs connectés, ainsi que leur statut (En ligne, en cours de partie, dans la queue ou en train de regarder un replay).
+Cette commande affiche la liste des utilisateurs connectés, ainsi que leur score (nombre de victoire / nombre de defaite) et leur statut (En ligne, en cours de partie, dans la queue ou en train de regarder un replay).
 
 ### Envoyer un message privé à un utilisateur
 
@@ -107,11 +107,11 @@ Chaque fichier contient le nom des 2 joueurs ainsi que la liste de tous les coup
 
 #### Contre un adversaire aléatoire
 
-Si vous souhaitez lancer une partie, effectuez la commande :
+Si vous souhaitez lancer une partie, décidez de la rotation dans laquelle vous voulez jouer au jeu (right = counter-clockwise, left = clockwise) effectuez la commande :
 \
-``/game``
+``/game <rotation (right/left)>``
 
-Cette commande vous placera alors dans une file d'attente et une partie se lancera dès que 2 joueurs seront dans cette file.
+Cette commande vous placera alors dans une file d'attente et une partie se lancera dès qu'un autre joueur jouant dans la même rotation se rajoute à la file.
 
 Si vous souhaitez quitter la file d'attente, effectuez la commande :
 \
