@@ -75,28 +75,6 @@ void handle_game_session(ServerState *serverState, char *buffer, int len_buf, Ga
    current = session->players[session->game.current];
    opponent = session->players[1 - session->game.current];
 
-   if (len_buf <= 0)
-   {
-      snprintf(buffer, BUF_SIZE, "%s a quitté la partie. Fin de la partie.\n", current->name);
-
-      for (int i = 0; i < session->nb_spectators; i++)
-      {
-         write_client(session->spectators[i]->sock, buffer);
-         session->spectators[i]->in_game = false;
-      }
-
-      write_client(opponent->sock, buffer);
-      session->players[0]->in_game = false;
-      session->players[1]->in_game = false;
-
-      fprintf(session->file, "0");
-      fclose(session->file);
-      session->active = false;
-
-      closesocket(current->sock);
-      remove_client(serverState, current);
-      return;
-   }
    buffer[len_buf] = '\0';
 
    int choice = atoi(buffer);

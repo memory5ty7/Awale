@@ -22,7 +22,7 @@ void cmd_chat(ServerState *serverState, Client *client, char *buffer)
         strcpy(playerMessage, token);
         snprintf(messageToSend, sizeof(messageToSend), "%s: %s", client->name, playerMessage);
     }
-    else 
+    else
     {
         write_client(client->sock, "\nToo few arguments.\nUsage : /chat [message]\n");
         return;
@@ -347,17 +347,23 @@ void cmd_quit(ServerState *serverState, Client *client, const char *buffer)
         write_client(client->sock, "\nToo many arguments.\nUsage : /quit\n");
         return;
     }
-    if (client->in_game && !isSpectator(client, getSessionByClient(serverState, client))) // on met le warning uniquement si c'est un joueur actif
+    if (client->in_game) // on met le warning uniquement si c'est un joueur actif
     {
-        if (isSpectator(client, getSessionByClient(serverState, client))) //server trace
-            puts("a spectator is sent a warning");
-        write_client(client->sock, "Êtes-vous sûr de vouloir vous déconnecter ?\n[ATTENTION] Vous serez considéré perdant par forfait.\n (y/n)\n");
-        client->confirm_quit = true;
+        if(!isSpectator(client, getSessionByClient(serverState, client)))
+        {
+            write_client(client->sock, "Êtes-vous sûr de vouloir vous déconnecter ?\n[ATTENTION] Vous serez considéré perdant par forfait.\n (y/n)\n");
+            client->confirm_quit = true;
+        }
     }
     else if (client->in_replay)
     {
-        //A faire (quit pendant un replay)
+        sprintf(buffer, "%s disconnected !\n", client->name);
+        send_message_to_all_clients(*serverState, *client, buffer, 1);
+
         client->in_replay = false;
+
+        closesocket(client->sock);
+        remove_client(serverState, getClientID(*serverState, client->name));
     }
     else if (client->in_queue)
     {
@@ -374,12 +380,12 @@ void cmd_quit(ServerState *serverState, Client *client, const char *buffer)
     else if (client->logged_in)
     {
         GameSession *session = getSessionByClient(serverState, client);
-        if (isSpectator(client, session)) //server trace
-            {
-                int to_remove = getSpectatorID(session, client->name);
-                memmove(session->spectators + to_remove, session->spectators + to_remove + 1, (session->nb_spectators - to_remove - 1) * sizeof(Client*));
-                session->nb_spectators--;
-            }
+        if (isSpectator(client, session)) // server trace
+        {
+            int to_remove = getSpectatorID(session, client->name);
+            memmove(session->spectators + to_remove, session->spectators + to_remove + 1, (session->nb_spectators - to_remove - 1) * sizeof(Client *));
+            session->nb_spectators--;
+        }
         write_client(client->sock, "Exiting server...\n");
         closesocket(client->sock);
         strncpy(buffer, client->name, BUF_SIZE - 1);
@@ -488,7 +494,7 @@ void cmd_replay(ServerState *serverState, Client *client, const char *buffer)
     {
         strcpy(player1, token);
     }
-    else 
+    else
     {
         write_client(client->sock, "Erreur de lecture du fichier.\n");
         return false;
@@ -499,7 +505,7 @@ void cmd_replay(ServerState *serverState, Client *client, const char *buffer)
     {
         strcpy(player2, token);
     }
-    else 
+    else
     {
         write_client(client->sock, "Erreur de lecture du fichier.\n");
         return false;
@@ -514,10 +520,10 @@ void cmd_replay(ServerState *serverState, Client *client, const char *buffer)
         moves[num_count++] = temp;
     }
 
-    client->in_replay=true;
+    client->in_replay = true;
 
     char message[NB_CHAR_PER_USERPWD];
-    sprintf(message, "\n%s : %s VS. %s\nEnvoyez un message pour passer au tour suivant.\n",gameId, player1, player2);
+    sprintf(message, "\n%s : %s VS. %s\nEnvoyez un message pour passer au tour suivant.\n", gameId, player1, player2);
     write_client(client->sock, message);
 
     start_replay_session(serverState, buffer, client, gameId, moves, num_count, &serverState->rSessions[serverState->rSession_count]);
@@ -550,7 +556,7 @@ void cmd_showgames(Client *client, const char *buffer)
 
     strcat(message, "\nListe des parties :\n");
 
-    int nb_games=0;
+    int nb_games = 0;
 
     // Read and process all files in the folder
     while ((entry = readdir(directory)) != NULL)
@@ -610,7 +616,7 @@ void cmd_showgames(Client *client, const char *buffer)
 
     closedir(directory); // Close the directory
 
-    if(nb_games == 0)
+    if (nb_games == 0)
     {
         strcpy(message, "Il n'y a pas encore de parties qui ont été jouées.\nSoyez le premier à en faire une !\n");
     }
@@ -665,11 +671,11 @@ void cmd_showusers(ServerState *serverState, Client *sender, const char *buffer)
             else if (serverState->clients[i].in_replay)
             {
                 strcpy(status, "Regarde un replay\n");
-            } 
+            }
             else if (serverState->clients[i].in_queue)
             {
                 strcpy(status, "Cherche une partie\n");
-            }                     
+            }
             else
             {
                 strcpy(status, "En ligne\n");
