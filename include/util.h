@@ -7,6 +7,7 @@
 void sanitizeFilename(char *);
 int getClientID(ServerState, char *);
 GameSession *getSessionByClient(ServerState*, Client *);
+GameSession *getReplayByClient(ServerState*, Client *);
 bool isSpectator(Client *, GameSession *);
 bool check_if_player_is_connected(ServerState, char *);
 bool authentification(char *userpassword, ServerState serverState);

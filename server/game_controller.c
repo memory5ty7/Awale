@@ -7,6 +7,8 @@
 #include <time.h>
 
 #include "../include/server_state.h"
+#include "../include/io.h"
+#include "../include/util.h"
 
 void start_game_session(ServerState *serverState, char *buffer, Client *player1, Client *player2, GameSession *session, int state)
 {
@@ -31,10 +33,11 @@ void start_game_session(ServerState *serverState, char *buffer, Client *player1,
    char filename[16];
    char foldername[16];
    sprintf(foldername, "games/");
-   snprintf(filename, sizeof(filename), "%02d:%02d:%02d\n", hours, minutes, seconds);
+   snprintf(filename, sizeof(filename), "%02d:%02d:%02d", hours, minutes, seconds);
    strcat(foldername, filename);
    sprintf(filename, foldername);
    strcpy(session->fileName, filename);
+   strcat(filename,"\n");
    write_client(player1->sock, session->fileName);
    write_client(player2->sock, session->fileName);
 
@@ -143,8 +146,8 @@ void handle_game_session(ServerState *serverState, char *buffer, int len_buf, Ga
 
 void end_game(char *buffer, GameSession *session)
 {
-   Client* winner = (session->game.stash[0] > session->game.stash[1]) ? session->players[0] : session->players[1];
-   Client* loser = (session->game.stash[0] > session->game.stash[1]) ? session->players[1] : session->players[0];
+   Client *winner = (session->game.stash[0] > session->game.stash[1]) ? session->players[0] : session->players[1];
+   Client *loser = (session->game.stash[0] > session->game.stash[1]) ? session->players[1] : session->players[0];
 
    snprintf(buffer, BUF_SIZE, "La partie est terminée! %s a gagné!\n", winner->name);
 
@@ -172,8 +175,6 @@ void spectator_join_session(char *buffer, Client *newSpectator, GameSession *ses
    session->nb_spectators++;
 
    newSpectator->in_game = true;
-
-   puts("spectator in game");
 
    displayBoard(buffer, BUF_SIZE, session->game, 3);
    write_client(newSpectator->sock, buffer);
