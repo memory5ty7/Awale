@@ -32,7 +32,17 @@ int getClientID(ServerState serverState, char *name)
    }
    return -1;
 }
-
+int getSpectatorID(GameSession *session, char *name)
+{
+   for (int i = 0; i < session->nb_spectators; i++)
+   {
+      if (strcmp(name, session->spectators[i]->name) == 0)
+      {
+         return i;
+      }
+   }
+   return -1;
+}
 GameSession *getSessionByClient(ServerState *serverState, Client *client)
 {
    for (int i = 0; i < serverState->session_count; i++)
@@ -98,6 +108,39 @@ void remove_client(ServerState *serverState, int to_remove)
    memmove(serverState->clients + to_remove, serverState->clients + to_remove + 1, (serverState->nb_clients - to_remove - 1) * sizeof(Client));
    /* number client - 1 */
    serverState->nb_clients--;
+   
+   //we check all the possible changes on session, waiting_clients etc. due to the removal of the client
+   for (int i = 0; i < serverState->session_count; i++)
+   {
+      if (getClientID(*serverState, serverState->sessions[i].players[0]->name) > to_remove)
+      {
+         serverState->sessions[i].players[0] = &serverState->clients[getClientID(*serverState, serverState->sessions[i].players[0]->name)-1];
+      }
+      else if (getClientID(*serverState, serverState->sessions[i].players[1]->name) > to_remove)
+      {
+         serverState->sessions[i].players[1] = &serverState->clients[getClientID(*serverState, serverState->sessions[i].players[1]->name)-1];
+      }
+      else{
+         for (int j = 0; j < serverState->sessions[i].nb_spectators; j++)
+         {
+            if (getClientID(*serverState, serverState->sessions[i].spectators[j]->name) > to_remove)
+            {
+               serverState->sessions[i].spectators[j] = &serverState->clients[getClientID(*serverState, serverState->sessions[i].spectators[j]->name)-1];
+            }
+         }
+      }
+   }
+   //pareil pour waiting counts
+   for (int i = 0; i < serverState->waiting_count; i++)
+   {
+      if (getClientID(*serverState, serverState->waiting_clients[i]->name) > to_remove)
+      {
+         puts("update de waiting client");
+         puts(serverState->waiting_clients[i]->name);
+         serverState->waiting_clients[i] = &serverState->clients[getClientID(*serverState, serverState->waiting_clients[i]->name)-1];
+         puts(serverState->waiting_clients[i]->name);
+      }
+   }
 }
 
 int read_client(SOCKET sock, char *buffer)
@@ -129,9 +172,9 @@ void send_message_to_all_clients(ServerState serverState, Client sender, const c
 {
    int i = 0;
    char message[BUF_SIZE];
-   message[0] = 0;
    for (i = 0; i < serverState.nb_clients; i++)
    {
+      message[0] = 0;
       /* we don't send message to the sender nor to Clients in game nor to not logged in clients */
       if (serverState.clients[i].logged_in && sender.sock != serverState.clients[i].sock && !serverState.clients[i].in_game)
       {
