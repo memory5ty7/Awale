@@ -142,6 +142,7 @@ static void app(void)
             new_client.in_replay = false;
             strcpy(new_client.challenger, "");
             strcpy(buffer, "\n\nBonjour. Bienvenue sur Awale! \nVous pouvez vous connecter avec /login [username] [password]\nSi c'est la première fois que vous vous connectez, utilisez /register [username] [password]\n");
+           
             write_client(csock, buffer);
 
             serverState->clients[serverState->nb_clients] = new_client;
@@ -161,10 +162,10 @@ static void app(void)
                if (c == 0 && client->logged_in && !client->in_game && !client->in_replay)
                {
                   closesocket(client->sock);
-                  remove_client(serverState, i);
                   strncpy(buffer, client->name, BUF_SIZE - 1);
                   strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
                   send_message_to_all_clients(*serverState, *client, buffer, 1);
+                  remove_client(serverState, i);
                   // server trace
                   puts(buffer);
                }
@@ -192,9 +193,13 @@ static void app(void)
                   {
                      cmd_register(serverState, client, bufferTemp);
                   }
+                  else if (strcmp(cmd, "/quit") == 0)
+                  {
+                     cmd_quit(serverState, client, bufferTemp);
+                  }
                   else
                   {
-                     strcpy(buffer, "\nVeuillez rentrer une commande valide.\nVous pouvez vous connecter avec /login [username] [password]\nSi c'est la première fois que vous vous connectez, utilisez /register [username] [password]\n");
+                     strcpy(buffer, "\nVeuillez rentrer une commande valide.\nVous pouvez vous connecter avec /login [username] [password]\nSi c'est la première fois que vous vous connectez, utilisez /register [username] [password]\n\nSi vous souhaitez quitter le serveur tapez : /quit\n");
                      write_client(client->sock, buffer);
                   }
                }
@@ -271,10 +276,10 @@ static void app(void)
                         {
                            write_client(client->sock, "You have quit the game. You will be disconnected from the server.\n");
                            closesocket(client->sock);
-                           remove_client(serverState, i);
                            strncpy(buffer, client->name, BUF_SIZE - 1);
                            strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
                            send_message_to_all_clients(*serverState, *client, buffer, 1);
+                           remove_client(serverState, i);
                            // server trace
                            puts(buffer);
                         }

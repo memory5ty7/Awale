@@ -111,7 +111,6 @@ void cmd_game(ServerState *serverState, Client *client, const char *buffer)
 
                     client->in_queue = true;
                     strcpy(clientDest->challenger, client->name);
-                    puts(clientDest->challenger);
                     return;
                 }
             }
@@ -155,7 +154,7 @@ void cmd_decline(ServerState *serverState, Client *client, const char *buffer)
     char *checkArg = strtok(NULL, "");
     if (checkArg != NULL)
     {
-        write_client(client->sock, "\nToo many arguments.\nUsage : /accept\n");
+        write_client(client->sock, "\nToo many arguments.\nUsage : /decline\n");
         return;
     }
 
@@ -164,8 +163,10 @@ void cmd_decline(ServerState *serverState, Client *client, const char *buffer)
         Client *challenger = &serverState->clients[getClientID(*serverState, client->challenger)];
         strcpy(buffer, client->name);
         strcat(buffer, " a refusé votre invitation.\n");
+        puts("invitation refusée");
         write_client(challenger->sock, buffer);
         challenger->in_queue = false;
+        puts(challenger->name);
         strcpy(client->challenger, "");
     }
     else
@@ -200,7 +201,7 @@ void cmd_cancel(ServerState *serverState, Client *client, const char *buffer)
     // si on arrive ici, c'est que le client n'a pas envoyé d'invitation et donc qu'il est en random (/game sans arguments)
     client->in_queue = false;
     serverState->waiting_count--;
-    write_client(client->sock, "Invitation annulée.\n");
+    write_client(client->sock, "Recherche de partie annulée.\n");
 }
 
 void cmd_help(Client *client, char *buffer)
@@ -346,9 +347,9 @@ void cmd_quit(ServerState *serverState, Client *client, const char *buffer)
         write_client(client->sock, "\nToo many arguments.\nUsage : /quit\n");
         return;
     }
-    if (client->in_game && !isSpectator(client, getSessionByClient(serverState, &client))) // on met le warning uniquement si c'est un joueur actif
+    if (client->in_game && !isSpectator(client, getSessionByClient(serverState, client))) // on met le warning uniquement si c'est un joueur actif
     {
-        if (isSpectator(client, getSessionByClient(serverState, &client))) //server trace
+        if (isSpectator(client, getSessionByClient(serverState, client))) //server trace
             puts("a spectator is sent a warning");
         write_client(client->sock, "Êtes-vous sûr de vouloir vous déconnecter ?\n[ATTENTION] Vous serez considéré perdant par forfait.\n (y/n)\n");
         client->confirm_quit = true;
@@ -358,14 +359,33 @@ void cmd_quit(ServerState *serverState, Client *client, const char *buffer)
         //A faire (quit pendant un replay)
         client->in_replay = false;
     }
-    else if (client->logged_in)
+    else if (client->in_queue)
     {
+        cmd_cancel(serverState, client, "/cancel");
         write_client(client->sock, "Exiting server...\n");
         closesocket(client->sock);
-        remove_client(serverState, getClientID(*serverState, client->name));
         strncpy(buffer, client->name, BUF_SIZE - 1);
         strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
         send_message_to_all_clients(*serverState, *client, buffer, 1);
+        remove_client(serverState, getClientID(*serverState, client->name));
+        // server trace
+        puts(buffer);
+    }
+    else if (client->logged_in)
+    {
+        GameSession *session = getSessionByClient(serverState, client);
+        if (isSpectator(client, session)) //server trace
+            {
+                int to_remove = getSpectatorID(session, client->name);
+                memmove(session->spectators + to_remove, session->spectators + to_remove + 1, (session->nb_spectators - to_remove - 1) * sizeof(Client*));
+                session->nb_spectators--;
+            }
+        write_client(client->sock, "Exiting server...\n");
+        closesocket(client->sock);
+        strncpy(buffer, client->name, BUF_SIZE - 1);
+        strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
+        send_message_to_all_clients(*serverState, *client, buffer, 1);
+        remove_client(serverState, getClientID(*serverState, client->name));
         // server trace
         puts(buffer);
     }
