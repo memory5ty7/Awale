@@ -62,6 +62,18 @@ GameSession *getSessionByClient(ServerState *serverState, Client *client)
    return NULL;
 }
 
+ReplaySession *getReplayByClient(ServerState *serverState, Client *client)
+{
+   for (int i = 0; i < serverState->rSession_count; i++)
+   {
+      if (serverState->rSessions[i].player->sock == client->sock)
+      {
+         return &serverState->rSessions[i];
+      }
+   }
+   return NULL;
+}
+
 bool isSpectator(Client *client, GameSession *session)
 {
    if (session != NULL)

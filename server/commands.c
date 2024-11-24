@@ -5,6 +5,8 @@
 
 #include "../include/server_state.h"
 #include "../include/util.h"
+#include "../include/game_controller.h"
+#include "../include/replay_controller.h"
 
 void cmd_chat(ServerState *serverState, Client *client, char *buffer)
 {
@@ -352,7 +354,12 @@ void cmd_quit(ServerState *serverState, Client *client, const char *buffer)
         write_client(client->sock, "Êtes-vous sûr de vouloir vous déconnecter ?\n[ATTENTION] Vous serez considéré perdant par forfait.\n (y/n)\n");
         client->confirm_quit = true;
     }
-    else if(client->in_queue)
+    else if (client->in_replay)
+    {
+        //A faire (quit pendant un replay)
+        client->in_replay = false;
+    }
+    else if (client->in_queue)
     {
         cmd_cancel(serverState, client, "/cancel");
         write_client(client->sock, "Exiting server...\n");
@@ -435,24 +442,85 @@ void cmd_register(ServerState *serverState, Client *client, char *buffer)
 void cmd_replay(ServerState *serverState, Client *client, const char *buffer)
 {
     strtok(buffer, " "); // skip the command
-    char *checkArg = strtok(NULL, "");
-    if (checkArg != NULL)
-    {
-        write_client(client->sock, "\nToo many arguments.\nUsage : /replay\n");
-        return;
-    }
-    char *gameId = strtok(NULL, "");
 
+    char *gameId = strtok(NULL, "");
     if (gameId == NULL)
     {
         write_client(client->sock, "\nToo few arguments.\nUsage : /replay [game-id]\n");
+        return;
     }
 
     char filename[BUF_SIZE];
     strcpy(filename, "games/");
     strcat(filename, gameId);
 
-    // replay_game(serverState->clients, *client, filename, buffer);
+    size_t len = strlen(filename);
+    if (len > 0 && filename[len - 1] == '\n')
+    {
+        filename[len - 1] = '\0';
+    }
+
+    puts(filename);
+
+    FILE *file = fopen(filename, "r");
+    if (file == NULL)
+    {
+        write_client(client->sock, "La partie spécifiée est introuvable\n");
+        return false;
+    }
+
+    char fileContent[1024];
+
+    if (fgets(fileContent, sizeof(fileContent), file) == NULL)
+    {
+        write_client(client->sock, "Erreur de lecture du fichier.\n");
+        fclose(file);
+        return false;
+    }
+
+    fclose(file);
+
+    char player1[NB_CHAR_PER_USERPWD];
+    char player2[NB_CHAR_PER_USERPWD];
+
+    char *token = strtok(fileContent, ";");
+    if (token != NULL)
+    {
+        strcpy(player1, token);
+    }
+    else 
+    {
+        write_client(client->sock, "Erreur de lecture du fichier.\n");
+        return false;
+    }
+
+    token = strtok(NULL, ";");
+    if (token != NULL)
+    {
+        strcpy(player2, token);
+    }
+    else 
+    {
+        write_client(client->sock, "Erreur de lecture du fichier.\n");
+        return false;
+    }
+    int moves[BUF_SIZE];
+    int num_count = 0;
+
+    while ((token = strtok(NULL, ";")) != NULL)
+    {
+        int temp = atoi(token);
+
+        moves[num_count++] = temp;
+    }
+
+    client->in_replay=true;
+
+    char message[NB_CHAR_PER_USERPWD];
+    sprintf(message, "\n%s : %s VS. %s\nEnvoyez un message pour passer au tour suivant.\n",gameId, player1, player2);
+    write_client(client->sock, message);
+
+    start_replay_session(serverState, buffer, client, gameId, moves, num_count, &serverState->rSessions[serverState->rSession_count]);
 }
 
 void cmd_showgames(Client *client, const char *buffer)
@@ -481,6 +549,8 @@ void cmd_showgames(Client *client, const char *buffer)
     message[0] = '\0';
 
     strcat(message, "\nListe des parties :\n");
+
+    int nb_games=0;
 
     // Read and process all files in the folder
     while ((entry = readdir(directory)) != NULL)
@@ -515,6 +585,7 @@ void cmd_showgames(Client *client, const char *buffer)
 
             if (lastChar == '0')
             {
+                nb_games++;
                 // Go back to the beginning of the file
                 rewind(file);
 
@@ -534,14 +605,15 @@ void cmd_showgames(Client *client, const char *buffer)
                 }
             }
         }
-        else
-        {
-            strcpy(message, "Il n'y a pas encore de parties qui ont été jouée.\nSoyez le premier à en faire une !\n");
-        }
         fclose(file); // Close the file
     }
 
     closedir(directory); // Close the directory
+
+    if(nb_games == 0)
+    {
+        strcpy(message, "Il n'y a pas encore de parties qui ont été jouées.\nSoyez le premier à en faire une !\n");
+    }
 
     write_client(client->sock, message);
 }
@@ -590,6 +662,14 @@ void cmd_showusers(ServerState *serverState, Client *sender, const char *buffer)
                     sprintf(status, "En partie contre %s\n", opponent);
                 }
             }
+            else if (serverState->clients[i].in_replay)
+            {
+                strcpy(status, "Regarde un replay\n");
+            } 
+            else if (serverState->clients[i].in_queue)
+            {
+                strcpy(status, "Cherche une partie\n");
+            }                     
             else
             {
                 strcpy(status, "En ligne\n");

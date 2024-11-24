@@ -51,6 +51,8 @@ static void app(void)
 
    serverState->session_count = 0;
 
+   serverState->rSession_count = 0;
+
    serverState->waiting_count = 0;
 
    serverState->nb_clients = 0; // nb de clients connectés
@@ -91,6 +93,14 @@ static void app(void)
             }
          }
       }
+      for (int i = 0; i < serverState->rSession_count; i++)
+      {
+         FD_SET(serverState->rSessions[i].player->sock, &rdfs);
+         if (serverState->rSessions[i].player->sock > max_fd)
+         {
+            max_fd = serverState->rSessions[i].player->sock;
+         }
+      }
 
       if (select(max_fd + 1, &rdfs, NULL, NULL, NULL) == -1)
       {
@@ -129,8 +139,10 @@ static void app(void)
             new_client.in_game = false;
             new_client.logged_in = false;
             new_client.in_queue = false;
-            strcpy(new_client.challenger,"");
-            strcpy(buffer, "\n\nBonjour. Bienvenue sur Awale! \nVous pouvez vous connecter avec /login [username] [password]\nSi c'est la première fois que vous vous connectez, utilisez /register [username] [password]\n\nSi vous souhaitez quitter le serveur tapez : /quit\n");
+            new_client.in_replay = false;
+            strcpy(new_client.challenger, "");
+            strcpy(buffer, "\n\nBonjour. Bienvenue sur Awale! \nVous pouvez vous connecter avec /login [username] [password]\nSi c'est la première fois que vous vous connectez, utilisez /register [username] [password]\n");
+           
             write_client(csock, buffer);
 
             serverState->clients[serverState->nb_clients] = new_client;
@@ -147,7 +159,7 @@ static void app(void)
                Client *client = &serverState->clients[i];
                int c = read_client(client->sock, buffer);
                /* logged_in player disconnected */
-               if (c == 0 && client->logged_in && !client->in_game)
+               if (c == 0 && client->logged_in && !client->in_game && !client->in_replay)
                {
                   closesocket(client->sock);
                   strncpy(buffer, client->name, BUF_SIZE - 1);
@@ -171,7 +183,7 @@ static void app(void)
                   strncpy(bufferTemp, buffer, BUF_SIZE - 1);
                   bufferTemp[BUF_SIZE - 1] = '\0'; // S'assurer que bufferTemp est nul-terminé
 
-                  char *cmd = strtok(buffer, " ");    // get command
+                  char *cmd = strtok(buffer, " "); // get command
 
                   if (strcmp(cmd, "/login") == 0)
                   {
@@ -206,31 +218,31 @@ static void app(void)
                      {
                         cmd_chat(serverState, client, bufferTemp);
                      }
-                     else if (!client->in_game && !client->in_queue && strcmp(cmd, "/game") == 0)
+                     else if (!client->in_game && !client->in_queue && !client->in_replay && strcmp(cmd, "/game") == 0)
                      {
                         cmd_game(serverState, client, bufferTemp);
                      }
-                     else if (!client->in_game && !client->in_queue && strcmp(cmd, "/showgames") == 0)
+                     else if (!client->in_game && !client->in_queue && !client->in_replay && strcmp(cmd, "/showgames") == 0)
                      {
                         cmd_showgames(client, bufferTemp);
                      }
-                     else if (!client->in_game && !client->in_queue && strcmp(cmd, "/join") == 0)
+                     else if (!client->in_game && !client->in_queue && !client->in_replay && strcmp(cmd, "/join") == 0)
                      {
                         cmd_join(serverState, client, bufferTemp);
                      }
-                     else if (!client->in_game && !client->in_queue && strcmp(cmd, "/accept") == 0)
+                     else if (!client->in_game && !client->in_queue && !client->in_replay && strcmp(cmd, "/accept") == 0)
                      {
                         cmd_accept(serverState, client, bufferTemp);
                      }
-                     else if (!client->in_game && !client->in_queue && strcmp(cmd, "/decline") == 0)
+                     else if (!client->in_game && !client->in_queue && !client->in_replay && strcmp(cmd, "/decline") == 0)
                      {
                         cmd_decline(serverState, client, bufferTemp);
                      }
-                     else if (!client->in_game && !client->in_queue && strcmp(cmd, "/replay") == 0)
+                     else if (!client->in_game && !client->in_queue && !client->in_replay && strcmp(cmd, "/replay") == 0)
                      {
                         cmd_replay(serverState, client, bufferTemp);
                      }
-                     else if (client->in_queue && strcmp(cmd, "/cancel") == 0)
+                     else if (client->in_queue && !client->in_replay && strcmp(cmd, "/cancel") == 0)
                      {
                         cmd_cancel(serverState, client, bufferTemp);
                      }
@@ -298,6 +310,20 @@ static void app(void)
                            puts("session not found for client :");
                            puts(client->name);
                         }
+                     }
+                  }
+                  else if (client->in_replay)
+                  {
+                     ReplaySession *session = getReplayByClient(serverState, client);
+
+                     if (session != NULL)
+                     {
+                        handle_replay_session(serverState, buffer, c, session);
+                     }
+                     else
+                     {
+                        puts("session not found for client :");
+                        puts(client->name);
                      }
                   }
                   else
